@@ -6,6 +6,7 @@
 - Night Elf eye glow is selected and submitted but has been reported missing visually. `window.characterPreviewStatus.eye_glow_triangles` reports submitted geometry, not visible pixels.
 - Character scale/framing and held-item grips were recently changed and still require manual comparison across races and sexes.
 - Shoulder/head attachments and complete equipment/geoset behavior are unfinished.
+- Scalp/facial customization, ranged-weapon selection, shield mounts, and roster clothing were recently corrected from local resource inspection; their final appearance still requires manual comparison.
 - The portable bloom kernel and final lighting are not established as native pixel equivalents.
 
 ## Interface and media

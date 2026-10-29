@@ -378,7 +378,7 @@ export async function loadCharacterModel({
       model,
       metadata.modelPath,
       readAsset,
-      (metadata.attachments || []).map((item) => item.attachmentId),
+      (metadata.attachments || []).map((item) => item.gripHand ?? item.attachmentId),
     );
     pose = await createBonePoseRuntime(modules.bones, idle.model, prepared);
     const first = pose.sample(0, 0);

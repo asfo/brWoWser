@@ -199,8 +199,14 @@ export async function createCharacterCatalog(readAsset) {
     geosets.set(15, 1);
     // The eye glow is an optional mesh, not a default facial feature.
     geosets.set(17, appearance.class === 6 ? 3 : race === 4 ? 2 : 0);
+    // WotLK stores these facial variants in group order 1, 3, 2.
     if (facialRow !== undefined)
-      for (let i = 0; i < 3; i++) geosets.set(i + 1, facial.u(facialRow, 3 + i));
+      for (const [group, field] of [
+        [1, 3],
+        [3, 4],
+        [2, 5],
+      ])
+        geosets.set(group, facial.u(facialRow, field));
     const outfitEquipment = [];
     if (appearance.mode === 'create') {
       const outfit = outfits.rows.find((row) => {
@@ -223,46 +229,59 @@ export async function createCharacterCatalog(readAsset) {
         if (row === undefined) throw Error('Starting item display unavailable: ' + display);
         outfitEquipment.push({ display, inventoryType, row });
       }
-      const order = new Map([
-        [4, 0],
-        [7, 1],
-        [8, 2],
-        [9, 3],
-        [5, 4],
-        [20, 4],
-        [6, 5],
-        [10, 6],
-        [19, 7],
-      ]);
-      const components = [
-        ['ArmUpperTexture', 'arm-upper'],
-        ['ArmLowerTexture', 'arm-lower'],
-        ['HandTexture', 'hand'],
-        ['TorsoUpperTexture', 'torso-upper'],
-        ['TorsoLowerTexture', 'torso-lower'],
-        ['LegUpperTexture', 'pelvis-upper'],
-        ['LegLowerTexture', 'pelvis-lower'],
-        ['FootTexture', 'foot'],
-      ];
-      for (const item of [...outfitEquipment].sort(
-        (a, b) => (order.get(a.inventoryType) ?? 99) - (order.get(b.inventoryType) ?? 99),
-      )) {
-        if (!order.has(item.inventoryType)) continue;
-        for (let i = 0; i < components.length; i++) {
-          const name = items.text(item.row, 15 + i);
-          if (!name) continue;
-          const [folder, region] = components[i];
-          layers.push({ path: await clothingPath(name, folder, gender), region });
-        }
-        if (item.inventoryType === 20) geosets.set(13, items.u(item.row, 9) + 1);
-        if (item.inventoryType === 10) geosets.set(4, items.u(item.row, 7) + 1);
-        if (item.inventoryType === 8) geosets.set(5, items.u(item.row, 8) + 1);
-      }
     }
     const equipment =
       appearance.mode === 'create'
         ? outfitEquipment.map(({ display, inventoryType }) => ({ display, inventoryType }))
         : appearance.equipment || [];
+    const wornEquipment = equipment
+      .filter((item) => item.display)
+      .map((item) => {
+        const row = itemRows.get(item.display);
+        if (row === undefined) throw Error('Equipped item display unavailable: ' + item.display);
+        return { ...item, row };
+      });
+    const order = new Map([
+      [4, 0],
+      [7, 1],
+      [8, 2],
+      [9, 3],
+      [5, 4],
+      [20, 4],
+      [6, 5],
+      [10, 6],
+      [19, 7],
+    ]);
+    const components = [
+      ['ArmUpperTexture', 'arm-upper'],
+      ['ArmLowerTexture', 'arm-lower'],
+      ['HandTexture', 'hand'],
+      ['TorsoUpperTexture', 'torso-upper'],
+      ['TorsoLowerTexture', 'torso-lower'],
+      ['LegUpperTexture', 'pelvis-upper'],
+      ['LegLowerTexture', 'pelvis-lower'],
+      ['FootTexture', 'foot'],
+    ];
+    for (const item of [...wornEquipment].sort(
+      (a, b) => (order.get(a.inventoryType) ?? 99) - (order.get(b.inventoryType) ?? 99),
+    )) {
+      if (!order.has(item.inventoryType)) continue;
+      for (let i = 0; i < components.length; i++) {
+        const name = items.text(item.row, 15 + i);
+        if (!name) continue;
+        const [folder, region] = components[i];
+        layers.push({ path: await clothingPath(name, folder, gender), region });
+      }
+      const variant = items.u(item.row, 7);
+      if ([4, 5, 20].includes(item.inventoryType) && variant) geosets.set(8, variant + 1);
+      if (item.inventoryType === 9 && variant && !geosets.has(8)) geosets.set(8, variant + 1);
+      if (item.inventoryType === 7 && variant) geosets.set(13, variant + 1);
+      if (item.inventoryType === 20 && items.u(item.row, 9))
+        geosets.set(13, items.u(item.row, 9) + 1);
+      if (item.inventoryType === 10 && variant) geosets.set(4, variant + 1);
+      if (item.inventoryType === 8 && variant) geosets.set(5, variant + 1);
+      if (item.inventoryType === 19) geosets.set(12, 2);
+    }
     let cloakTexture = null;
     const cloak = equipment.find((item) => item.inventoryType === 16 && item.display);
     if (cloak) {
@@ -279,7 +298,20 @@ export async function createCharacterCatalog(readAsset) {
       [1, [13, 17, 21, 15, 25, 26]],
       [2, [14, 22, 23]],
     ]) {
-      const item = equipment.find((entry) => types.includes(entry.inventoryType) && entry.display);
+      const ranged =
+        appearance.class === 3 && attachmentId === 1
+          ? equipment.find((entry) => [15, 25, 26].includes(entry.inventoryType) && entry.display)
+          : null;
+      // CHAR_ENUM keeps equipment slots, including empty ones. Inventory type
+      // alone cannot distinguish two one-handed weapons in different hands.
+      const slotItem =
+        appearance.mode === 'select' && equipment.length === 23
+          ? equipment[attachmentId === 1 ? 15 : 16]
+          : null;
+      const item =
+        ranged ||
+        (slotItem?.display ? slotItem : null) ||
+        equipment.find((entry) => types.includes(entry.inventoryType) && entry.display);
       if (!item) continue;
       const row = itemRows.get(item.display);
       if (row === undefined) throw Error('Held item display unavailable: ' + item.display);
@@ -293,8 +325,13 @@ export async function createCharacterCatalog(readAsset) {
         const path = modelPath(prefix + file).replace(/\.mdl$/i, '.m2');
         try {
           await readAsset(path);
+          // Shields mount on the forearm (0); bows use the left palm (2).
+          // Other main/off-hand items retain their respective palm anchors.
+          const bow = /^bow/i.test(file);
+          const anchor = item.inventoryType === 14 ? 0 : bow ? 2 : attachmentId;
           attachments.push({
-            attachmentId,
+            attachmentId: anchor,
+            gripHand: item.inventoryType === 14 || bow ? 2 : attachmentId,
             modelPath: path,
             skinPath: path.replace(/\.m2$/i, '00.skin'),
             texture: texturePath(prefix + texture),
@@ -315,7 +352,7 @@ export async function createCharacterCatalog(readAsset) {
       extraSkinTexture: body[1] || body[0],
       cloakTexture,
       hairGeoset: hairRow === undefined ? 0 : hair.u(hairRow, 4),
-      bald: hairRow === undefined || !!hair.u(hairRow, 5),
+      bald: hairRow === undefined || !hair.u(hairRow, 4) || !!hair.u(hairRow, 5),
       geosets,
       equipment,
       attachments,

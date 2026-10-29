@@ -15,6 +15,9 @@ brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. 
 - Character creation interface, supported race/class combinations from `CharBaseInfo`, customization, source-based backgrounds, player skin composition, and held weapons/shields.
 - Animated hand anchors and `HandsClosed` finger tracks for occupied hands.
 - Uncovered ears select geoset 702 across character models; models with ears integrated into the body retain their existing geometry. Final visual review remains manual.
+- Character selection applies clothing textures and garment geosets from server-reported equipment, using the same composition path as creation previews.
+- Bald hair variants retain their scalp mesh; facial customization maps the source table's 1/3/2 geoset order for features such as piercings and tusks.
+- Hunters preview their source-provided ranged weapon. Bows use the left palm; shields use the forearm mount while retaining the left-hand grip pose.
 
 ## Current review
 
