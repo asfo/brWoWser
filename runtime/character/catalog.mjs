@@ -191,6 +191,9 @@ export async function createCharacterCatalog(readAsset) {
         facial.u(row, 0) === race && facial.u(row, 1) === gender && facial.u(row, 2) === facialHair,
     );
     const geosets = new Map();
+    // 702 exposes uncovered ears; 701 is the hidden-ear variant. Models
+    // with ears built into the body have no group 7 and remain unaffected.
+    geosets.set(7, 2);
     // 1501 closes the bare back using the body atlas; 1502+ are actual
     // capes using replaceable slot 2. Hiding the whole group leaves holes.
     geosets.set(15, 1);

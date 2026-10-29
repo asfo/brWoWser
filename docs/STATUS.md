@@ -14,6 +14,7 @@ brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. 
 - Authentication, realm selection, and character roster protocol handling through a local WebSocket bridge.
 - Character creation interface, supported race/class combinations from `CharBaseInfo`, customization, source-based backgrounds, player skin composition, and held weapons/shields.
 - Animated hand anchors and `HandsClosed` finger tracks for occupied hands.
+- Uncovered ears select geoset 702 across character models; models with ears integrated into the body retain their existing geometry. Final visual review remains manual.
 
 ## Current review
 

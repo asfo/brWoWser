@@ -1,8 +1,8 @@
 {
   "name": "brwowser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "brWoWser \u2014 World of Warcraft: Wrath of the Lich King in a browser",
+  "description": "brWoWser — World of Warcraft: Wrath of the Lich King in a browser",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"
