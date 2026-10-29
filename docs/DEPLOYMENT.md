@@ -15,6 +15,26 @@ The browser entry is `http://127.0.0.1:8787/?startup&live`. The bridge listens o
 
 `npm run dev:restart` checks that the current listeners belong to this checkout before restarting them. `npm run dev:fresh` starts a comparison session with fresh browser configuration. Existing native client data is not deleted.
 
+## Realm appears offline
+
+A running container does not necessarily mean the realm is advertised online.
+The client displays the realm flags returned by the authentication server.
+In the local server build used for development, restarting `authserver` after
+`worldserver` can mark the realm offline until the world server announces itself
+again. Start authentication before the world server. If this happens after a
+restart, restart only the world-server container, wait for its ready message and
+the auth server's realm-list refresh, then refresh the realm list or log in again.
+
+For the local Docker installation, the container is named `ac-worldserver`:
+
+```sh
+docker restart ac-worldserver
+```
+
+This recovery does not require changing server source/configuration or forcing
+the client to ignore an offline flag. Restarting the web app or bridge alone
+does not correct a server-side realm flag.
+
 ## Build only
 
 `npm run build` compiles the required WASM modules and networking module. It does not run browser/native tests or authenticate an account. `npm run build -- --force` bypasses the build cache. Public Lua and FreeType sources are prepared automatically if absent.
