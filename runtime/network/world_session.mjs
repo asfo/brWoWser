@@ -1,4 +1,5 @@
 import { connectAuthTransport } from './transport.mjs';
+import { WORLD, characterGuid, worldLocation, movementPacket } from './world_entry.mjs';
 import {
   encodeCharacterCreate,
   characterCreateResult,
@@ -67,7 +68,9 @@ export function connectWorldSession({
     }
     let roster,
       rosterRequest = null,
-      creationRequest = null;
+      creationRequest = null,
+      entryRequest = null,
+      worldEntry = null;
     let timer = setTimeout(() => close(Error('World authentication timeout')), 20000);
     const io = () => new Uint8Array(e.memory.buffer, e.bw_auth_io(), 65536);
     function close(error = Error('World connection closed')) {
@@ -80,12 +83,14 @@ export function connectWorldSession({
       clearTimeout(timer);
       clearInterval(heartbeat);
       clearInterval(wardenTicker);
-      for (const job of [rosterRequest, creationRequest]) {
+      for (const job of [rosterRequest, creationRequest, entryRequest]) {
         if (!job) continue;
         clearTimeout(job.timer);
         job.reject(error);
       }
       rosterRequest = creationRequest = null;
+      entryRequest = null;
+      worldEntry = null;
       signal?.removeEventListener('abort', abort);
       transport?.close();
       e.bw_world_clear();
@@ -179,11 +184,57 @@ export function connectWorldSession({
         },
         selectCharacter(guid) {
           if (closed) throw closeError;
+          if (worldEntry) throw Error('A character is already entering the world');
           return roster.select(guid);
+        },
+        get worldEntry() {
+          return worldEntry;
+        },
+        enterWorld() {
+          if (closed) return Promise.reject(closeError);
+          if (entryRequest) return entryRequest.promise;
+          if (worldEntry || creationRequest || rosterRequest || !roster.selected)
+            return Promise.reject(Error('Character is not ready to enter the world'));
+          const job = {};
+          job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
+          entryRequest = job;
+          worldEntry = { phase: 'entering', character: roster.selected, cinematic: 0, updates: 0 };
+          job.timer = setTimeout(() => close(Error('World entry response timeout')), 30000);
+          try {
+            send(WORLD.login, characterGuid(roster.selected.guid));
+          } catch (error) {
+            close(error);
+          }
+          return job.promise;
+        },
+        worldAction(action) {
+          if (closed) throw closeError;
+          if (!worldEntry?.location) throw Error('World entry is not ready');
+          if (action.operation === 'ready') {
+            if (worldEntry.phase !== 'loading') return;
+            send(WORLD.activeMover, characterGuid(worldEntry.character.guid));
+            worldEntry = { ...worldEntry, phase: 'world' };
+          } else if (action.operation === 'cinematic-begin') {
+            if (!worldEntry.cinematic || worldEntry.cinematicStarted) return;
+            send(WORLD.cinematicBegin);
+            worldEntry = { ...worldEntry, cinematicStarted: true };
+          } else if (action.operation === 'cinematic-end') {
+            if (!worldEntry.cinematic) return;
+            send(WORLD.cinematicEnd);
+            worldEntry = { ...worldEntry, cinematic: 0, cinematicStarted: false };
+          } else if (action.operation === 'movement') {
+            if (worldEntry.phase !== 'world' || worldEntry.cinematic) return;
+            const allowed = [0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbe, 0xee];
+            if (!allowed.includes(action.opcode)) throw Error('Unsupported movement operation');
+            send(
+              action.opcode,
+              movementPacket(worldEntry.character.guid, action.position, action.flags, action.time),
+            );
+          } else throw Error('Unsupported world action');
         },
         refreshCharacters() {
           if (closed) return Promise.reject(closeError);
-          if (creationRequest)
+          if (creationRequest || worldEntry)
             return Promise.reject(Error('Character creation is already pending'));
           if (rosterRequest) return rosterRequest.promise;
           const job = {};
@@ -199,7 +250,7 @@ export function connectWorldSession({
         },
         createCharacter(character) {
           if (closed) return Promise.reject(closeError);
-          if (creationRequest || rosterRequest)
+          if (creationRequest || rosterRequest || worldEntry)
             return Promise.reject(Error('A character operation is already pending'));
           let bytes;
           try {
@@ -303,6 +354,46 @@ export function connectWorldSession({
       return false;
     }
     function packet(opcode, body) {
+      if (opcode === WORLD.timeSync) {
+        if (!authed || body.length !== 4) throw Error('Invalid world time synchronization');
+        const reply = new Uint8Array(8);
+        reply.set(body);
+        new DataView(reply.buffer).setUint32(4, Math.floor(performance.now()) >>> 0, true);
+        send(WORLD.timeSyncResponse, reply);
+        return;
+      }
+      if (opcode === WORLD.verify) {
+        if (!entryRequest || !worldEntry) throw Error('Unexpected world entry location');
+        const location = worldLocation(body);
+        worldEntry = { ...worldEntry, phase: 'loading', location };
+        const job = entryRequest;
+        entryRequest = null;
+        clearTimeout(job.timer);
+        status({ phase: 'loading-world', realm: realm.name });
+        job.resolve(location);
+        return;
+      }
+      if (opcode === WORLD.loginFailed) {
+        if (!entryRequest || body.length !== 1) throw Error('Unexpected player login failure');
+        const job = entryRequest;
+        entryRequest = null;
+        worldEntry = null;
+        clearTimeout(job.timer);
+        job.reject(Error(`Player login rejected (${body[0]})`));
+        return;
+      }
+      if (opcode === WORLD.cinematic) {
+        if (!worldEntry || body.length !== 4) throw Error('Invalid world cinematic trigger');
+        worldEntry = {
+          ...worldEntry,
+          cinematic: new DataView(body.buffer, body.byteOffset, 4).getUint32(0, true),
+        };
+        return;
+      }
+      if (opcode === WORLD.update || opcode === WORLD.compressedUpdate) {
+        if (worldEntry) worldEntry = { ...worldEntry, updates: worldEntry.updates + 1 };
+        return;
+      }
       if (opcode === OPCODE.challenge) {
         if (encrypted) throw Error('Repeated world challenge');
         if (body.length !== 4 && body.length < 8) throw Error('Truncated world challenge');

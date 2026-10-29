@@ -2,7 +2,7 @@
 
 Updated: 2026-10-29.
 
-brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. It is not yet a playable in-world client.
+brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. An initial outdoor world-entry implementation is now available for manual validation; general in-world gameplay is not implemented.
 
 ## Implemented
 
@@ -18,6 +18,16 @@ brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. 
 - Character selection applies clothing textures and garment geosets from server-reported equipment, using the same composition path as creation previews.
 - Bald hair variants retain their scalp mesh; facial customization maps the source table's 1/3/2 geoset order for features such as piercings and tusks.
 - Hunters preview their source-provided ranged weapon. Bows use the left palm; shields use the forearm mount while retaining the left-hand grip pose.
+
+## First outdoor world entry
+
+- Enter World sends the selected character GUID and uses the server-provided map and position.
+- World time synchronization is answered while the existing session services remain active.
+- A C/WASM worker decodes ADT terrain, texture alpha maps, static WMO groups, static M2 decoration and instance transforms.
+- C/WASM evaluates the source introduction camera spline, terrain heights, ground movement, player placement and view matrices. JavaScript owns browser I/O, input forwarding, media playback and WebGL submission.
+- Server-triggered introductions resolve their source camera and narration. Escape opens a canvas C/Lua confirmation; completion restores the follow camera.
+- Initial outdoor controls support forward/backward movement, turning, strafing, right-button camera orbit and wheel zoom, with server movement packets and stand/run poses.
+- Builds and bounded owner-resource decoding have been inspected. Live entry, visual appearance, introduction controls and movement still require manual validation.
 
 ## Current review
 

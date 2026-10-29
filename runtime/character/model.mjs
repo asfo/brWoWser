@@ -54,7 +54,7 @@ function rebindTextures(model, names) {
 // Collapse the chosen local animation's outer arrays for the already bounded C
 // pose decoder. Source bytes remain immutable, and external .anim offsets are
 // relocated only into this private in-memory working copy.
-async function idleModel(source, path, readAsset, heldAttachments = []) {
+async function idleModel(source, path, readAsset, heldAttachments = [], animationId = 0) {
   const { view, span } = binary(source, 0x3032444d, 0x138, 8388608);
   const count = view.getUint32(28, true),
     at = view.getUint32(32, true);
@@ -63,11 +63,11 @@ async function idleModel(source, path, readAsset, heldAttachments = []) {
   let handIndex = -1;
   for (let i = 0; i < count; i++) {
     if (view.getUint16(at + i * 64, true) === 15 && handIndex < 0) handIndex = i;
-    if (view.getUint16(at + i * 64, true) === 0) {
+    if (view.getUint16(at + i * 64, true) === animationId) {
       if (index < 0) index = i;
     }
   }
-  if (index < 0) throw Error('Character stand animation unavailable');
+  if (index < 0) throw Error('Character animation unavailable: ' + animationId);
   const sequence = at + index * 64;
   const flags = view.getUint32(sequence + 12, true);
   const external = !(flags & 0x20);
@@ -414,10 +414,30 @@ export async function loadCharacterModel({
   }
   let cachedTime = -1,
     cachedPose;
+  let runPose,
+    runDuration = 0,
+    moving = false;
+  if (appearance?.worldPreview && pose) {
+    try {
+      const run = await idleModel(
+        model,
+        metadata.modelPath,
+        readAsset,
+        (metadata.attachments || []).map((item) => item.gripHand ?? item.attachmentId),
+        5,
+      );
+      runPose = await createBonePoseRuntime(modules.bones, run.model, prepared);
+      runDuration = run.duration;
+    } catch (error) {
+      onIssue('Run animation unavailable: ' + error.message);
+    }
+  }
   function samplePose(elapsedMs, view) {
     const ms = Math.floor(elapsedMs);
     if (ms !== cachedTime) {
-      cachedPose = pose?.sample(duration ? ms % duration : 0, ms, view);
+      const runtime = moving && runPose ? runPose : pose;
+      const clock = moving && runPose ? runDuration : duration;
+      cachedPose = runtime?.sample(clock ? ms % clock : 0, ms, view);
       if (cachedPose)
         for (let i = 0; i < cachedPose.vertexValid.length; i++)
           if (!cachedPose.vertexValid[i]) {
@@ -429,6 +449,12 @@ export async function loadCharacterModel({
     return cachedPose;
   }
   return {
+    motion(value) {
+      if (moving !== !!value) {
+        moving = !!value;
+        cachedTime = -1;
+      }
+    },
     metadata,
     camera,
     placeAttachment(id, elapsedMs, parent, facing) {

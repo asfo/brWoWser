@@ -60,6 +60,7 @@ export async function createCharacterAssetSource(files, config) {
   return {
     readAsset: async (path) => new Uint8Array((await asset('bytes', path)).bytes),
     decodeTexture: (path) => asset('texture', path),
+    world: (operation, data = {}) => call({ kind: 'world', operation, ...data }),
     dispose() {
       cache.clear();
       fail(Error('Character asset source closed'));

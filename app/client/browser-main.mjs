@@ -30,6 +30,7 @@ import { createSceneRenderer } from '../../runtime/scene/renderer.mjs';
 import { createCharacterAssetSource } from '../../runtime/character/assets.mjs';
 import { createCharacterCatalog } from '../../runtime/character/catalog.mjs';
 import { createCharacterPreview } from '../../runtime/character/renderer.mjs';
+import { createWorldClient } from '../../runtime/world/client.mjs';
 import { uploadWebGLResources } from '../../runtime/graphics/webgl_resources.mjs';
 const get = async (path) => {
     const r = await fetch(path);
@@ -205,6 +206,78 @@ const launch = (event) => {
       inputConnection,
       keyboardConnection;
     let characterSourcePromise, characterCatalogPromise, characterPreview, characterBackground;
+    let worldClient,
+      worldKey = '',
+      worldGeneration = 0;
+    const ensureCharacterSource = () => {
+      characterSourcePromise ??= (async () =>
+        createCharacterAssetSource(inventory.archives, {
+          locale: config.locale,
+          startup: await get('/startup.wasm'),
+          orderWasm: await get('/order.wasm'),
+          lookupWasm: resourceArgs.lookupWasm,
+          decoderWasm: resourceArgs.decoderWasm,
+          blpWasm: await get('/ui-blp.wasm'),
+        }))();
+      characterCatalogPromise ??= characterSourcePromise.then((source) =>
+        createCharacterCatalog(source.readAsset),
+      );
+    };
+    const updateWorld = (state) => {
+      const entry = state.world_entry;
+      if (!entry) {
+        if (worldKey) {
+          worldGeneration++;
+          worldKey = '';
+          worldClient?.dispose();
+          worldClient = null;
+        }
+        return;
+      }
+      worldClient?.sync(entry);
+      if (!entry.location) return;
+      const key = JSON.stringify([entry.character.guid, entry.location.map]);
+      if (key === worldKey) return;
+      worldKey = key;
+      const generation = ++worldGeneration;
+      ensureCharacterSource();
+      disposeCharacter();
+      disposeBackground();
+      window.worldStatus = { phase: 'loading' };
+      (async () => {
+        const [source, catalog] = await Promise.all([
+          characterSourcePromise,
+          characterCatalogPromise,
+        ]);
+        if (generation !== worldGeneration) return;
+        const client = await createWorldClient({
+          gl,
+          canvas,
+          source,
+          catalog,
+          modules,
+          prepareWasm: resourceArgs.prepareWasm,
+          entry,
+          isCurrent: () => generation === worldGeneration,
+          send: (action) => window.uiInput({ kind: 14, ...action }),
+          onIssue: (message) => console.warn('World: ' + message),
+        });
+        if (generation !== worldGeneration) {
+          client.dispose();
+          return;
+        }
+        worldClient = client;
+        client.sync(window.uiInputState?.world_entry || entry);
+        window.worldStatus = { phase: 'ready' };
+      })().catch((error) => {
+        if (generation !== worldGeneration) return;
+        window.worldStatus = { phase: 'error', message: error.message };
+        console.warn('World: ' + error.message);
+        window
+          .uiInput({ kind: 14, operation: 'error', message: error.message })
+          .catch((error) => console.warn(error.message));
+      });
+    };
     let characterGlow;
     let characterPointerDown = false;
     let backgroundKey = '',
@@ -229,6 +302,8 @@ const launch = (event) => {
       window.characterBackgroundStatus = { state: 'idle' };
     };
     const updateCharacterPreview = (state) => {
+      updateWorld(state);
+      if (state.world_entry) return;
       const appearance = state.character_preview;
       if (!isCharacterScreen(state) || !appearance) {
         if (characterKey || characterPreview) disposeCharacter();
@@ -247,18 +322,7 @@ const launch = (event) => {
         appearance.facialHair,
         appearance.equipment,
       ]);
-      characterSourcePromise ??= (async () =>
-        createCharacterAssetSource(inventory.archives, {
-          locale: config.locale,
-          startup: await get('/startup.wasm'),
-          orderWasm: await get('/order.wasm'),
-          lookupWasm: resourceArgs.lookupWasm,
-          decoderWasm: resourceArgs.decoderWasm,
-          blpWasm: await get('/ui-blp.wasm'),
-        }))();
-      characterCatalogPromise ??= characterSourcePromise.then((source) =>
-        createCharacterCatalog(source.readAsset),
-      );
+      ensureCharacterSource();
       const backgroundPath = appearance.backgroundPath;
       if (backgroundPath && backgroundPath !== backgroundKey) {
         disposeBackground();
@@ -394,6 +458,8 @@ const launch = (event) => {
       'pagehide',
       () => {
         disposeCharacter();
+        worldGeneration++;
+        worldClient?.dispose();
         disposeBackground();
         characterGlow?.dispose();
         characterSourcePromise?.then((source) => source.dispose()).catch(() => {});
@@ -676,7 +742,10 @@ const launch = (event) => {
             return window.uiInputState;
           }
           if (!state.movie_active) await prepareUI(state.packet, true);
-          if (isCharacterScreen(state)) {
+          if (state.world_entry) {
+            // World drawing belongs to the animation loop; input acknowledgements
+            // must never recursively await another world frame.
+          } else if (isCharacterScreen(state)) {
             // The animation loop draws timer updates once, after input settles.
             if (action.kind !== 10) drawCharacter(state);
           } else if (!state.movie_active && action.kind !== 10)
@@ -799,6 +868,7 @@ const launch = (event) => {
       if (liveMode) {
         let stopped = false,
           lastFrame = 0,
+          lastWorldFrame = performance.now(),
           lastUITick = performance.now();
         window.sceneSession.stop = () => {
           stopped = true;
@@ -855,7 +925,22 @@ const launch = (event) => {
               performance.now() - playbackStarted,
               session.scene.metadata.sequenceDurationMs,
             );
-            if (isCharacterScreen(window.uiInputState)) {
+            if (window.uiInputState?.world_entry) {
+              if (worldClient) {
+                try {
+                  const worldDraw = await worldClient.draw(
+                    Math.min(0.1, (now - lastWorldFrame) / 1000),
+                  );
+                  if (worldDraw) window.worldStatus = worldDraw;
+                } catch (error) {
+                  console.warn('World: ' + error.message);
+                  worldClient.dispose();
+                  worldClient = null;
+                  await window.uiInput({ kind: 14, operation: 'error', message: error.message });
+                }
+              } else clearScene();
+              lastWorldFrame = now;
+            } else if (isCharacterScreen(window.uiInputState)) {
               drawCharacter(window.uiInputState);
             } else if (creditsScreen) {
               clearScene();
@@ -872,7 +957,8 @@ const launch = (event) => {
             }
             uiRenderer.draw();
             softwareCursor?.draw();
-            if (!creditsScreen) audio?.frame(clocks.sequenceMs, clocks.globalMs);
+            if (!creditsScreen && !window.uiInputState?.world_entry)
+              audio?.frame(clocks.sequenceMs, clocks.globalMs);
             window.animationStatus = {
               state: 'running',
               ...clocks,

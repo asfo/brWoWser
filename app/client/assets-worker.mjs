@@ -2,6 +2,164 @@ import { readLocalSource } from '../../runtime/io/local_source.mjs';
 import { makePlanner } from '../../engine/archive-startup/planner.mjs';
 import { openArchive } from '../../runtime/io/member_reader.mjs';
 let archives, ordered, lookupWasm, decoderWasm, blp, files;
+let world;
+async function worldOperation(data) {
+  if (data.operation === 'init') {
+    world = (await WebAssembly.instantiate(data.wasm, {})).instance.exports;
+    return {};
+  }
+  if (!world) throw Error('World decoder is unavailable');
+  const floats = (p, n) => new Float32Array(world.memory.buffer, p, n);
+  const words = (p, n) => new Uint32Array(world.memory.buffer, p, n);
+  async function load(path) {
+    const asset = await bytes(path);
+    if (asset.length > world.world_capacity()) throw Error('World asset exceeds decoder capacity');
+    new Uint8Array(world.memory.buffer, world.world_input(), asset.length).set(asset);
+    return asset.length;
+  }
+  if (data.operation === 'terrain') {
+    const n = await load(data.path);
+    const error = world.world_terrain(n, data.bigAlpha ? 1 : 0);
+    if (error) throw Error(`Terrain decode rejected (${error}): ${data.path}`);
+    const info = words(world.world_meta(), 8).slice();
+    const strings = new Uint8Array(world.memory.buffer, world.world_input() + info[3], info[4]);
+    const names = new TextDecoder('utf-8', { fatal: true }).decode(strings).split('\0');
+    if (names.at(-1) !== '') throw Error('Invalid terrain texture names');
+    names.pop();
+    const errorObjects = world.world_objects(n);
+    if (errorObjects) throw Error(`World structure records rejected (${errorObjects})`);
+    const count = words(world.world_meta(), 1)[0];
+    const objects = Array.from({ length: count }, (_, i) => {
+      const pathBytes = new Uint8Array(
+        world.memory.buffer,
+        world.world_object_names() + i * 256,
+        256,
+      );
+      return {
+        id: words(world.world_object_ids(), count)[i],
+        kind: words(world.world_object_kinds(), count)[i] ? 'm2' : 'wmo',
+        path: new TextDecoder().decode(pathBytes.subarray(0, pathBytes.indexOf(0))),
+        placement: floats(world.world_object_matrices() + i * 64, 16).slice(),
+      };
+    });
+    return {
+      objects,
+      vertices: floats(world.world_vertices(), info[1] * 11).slice(),
+      indices: words(world.world_indices(), info[2]).slice(),
+      chunks: words(world.world_chunks(), info[0] * 8).slice(),
+      alpha: new Uint8Array(world.memory.buffer, world.world_alpha(), info[0] * 16384).slice(),
+      textures: names,
+    };
+  }
+  if (data.operation === 'static-model') {
+    let error = world.world_static_model(await load(data.path));
+    if (error) throw Error(`Static world model rejected (${error}): ${data.path}`);
+    error = world.world_static_skin(await load(data.path.replace(/\.m2$/i, '00.skin')));
+    if (error) throw Error(`Static world skin rejected (${error}): ${data.path}`);
+    const info = words(world.world_meta(), 4).slice();
+    return {
+      vertices: floats(world.world_vertices(), info[0] * 11).slice(),
+      indices: words(world.world_indices(), info[1]).slice(),
+      batches: words(world.world_chunks(), info[2] * 8).slice(),
+      materials: Array.from({ length: info[3] }, (_, i) => {
+        const name = new Uint8Array(
+          world.memory.buffer,
+          world.world_material_names() + i * 256,
+          256,
+        );
+        return {
+          path: new TextDecoder().decode(name.subarray(0, name.indexOf(0))),
+          mode: words(world.world_material_modes(), info[3])[i],
+        };
+      }),
+    };
+  }
+  if (data.operation === 'wmo-root') {
+    const error = world.world_wmo_root(await load(data.path));
+    if (error) throw Error(`World structure header rejected (${error}): ${data.path}`);
+    const info = words(world.world_meta(), 3).slice();
+    return {
+      groups: words(world.world_exterior_groups(), info[2]).slice(),
+      materials: Array.from({ length: info[1] }, (_, i) => {
+        const name = new Uint8Array(
+          world.memory.buffer,
+          world.world_material_names() + i * 256,
+          256,
+        );
+        return {
+          path: new TextDecoder().decode(name.subarray(0, name.indexOf(0))),
+          mode: words(world.world_material_modes(), info[1])[i],
+        };
+      }),
+    };
+  }
+  if (data.operation === 'wmo-group') {
+    const error = world.world_wmo_group(await load(data.path));
+    if (error) throw Error(`World structure geometry rejected (${error}): ${data.path}`);
+    const info = words(world.world_meta(), 3).slice();
+    return {
+      vertices: floats(world.world_vertices(), info[0] * 11).slice(),
+      indices: words(world.world_indices(), info[1]).slice(),
+      batches: words(world.world_chunks(), info[2] * 8).slice(),
+    };
+  }
+  if (data.operation === 'spawn') {
+    if (
+      !Array.isArray(data.position) ||
+      data.position.length !== 4 ||
+      !data.position.every(Number.isFinite)
+    )
+      throw Error('Invalid world spawn');
+    floats(world.world_controls(), 4).set(data.position);
+    if (world.world_spawn()) throw Error('World spawn rejected');
+    return {};
+  }
+  if (data.operation === 'cinematic') {
+    if (
+      !Array.isArray(data.origin) ||
+      data.origin.length !== 4 ||
+      !data.origin.every(Number.isFinite)
+    )
+      throw Error('Invalid cinematic origin');
+    floats(world.world_origin(), 4).set(data.origin);
+    const error = world.world_cinematic_load(await load(data.path));
+    if (error) throw Error(`Cinematic camera rejected (${error}): ${data.path}`);
+    return { duration: world.world_cinematic_duration() };
+  }
+  if (data.operation === 'sample') {
+    if (data.cinematicMs !== undefined) {
+      if (
+        !Number.isInteger(data.cinematicMs) ||
+        data.cinematicMs < 0 ||
+        data.cinematicMs > world.world_cinematic_duration()
+      )
+        throw Error('Invalid cinematic clock');
+      if (world.world_cinematic_sample(data.cinematicMs)) throw Error('Cinematic sample rejected');
+    } else {
+      if (
+        !Array.isArray(data.controls) ||
+        data.controls.length !== 7 ||
+        !data.controls.every(Number.isFinite)
+      )
+        throw Error('Invalid world controls');
+      floats(world.world_controls(), 7).set(data.controls);
+      if (world.world_step(data.elapsed)) throw Error('World movement rejected');
+      if (world.world_orbit()) throw Error('World camera rejected');
+    }
+    if (world.world_view(data.aspect)) throw Error('World view rejected');
+    world.world_frame_meta();
+    world.world_cull();
+    return {
+      player: floats(world.world_player(), 8).slice(),
+      camera: floats(world.world_camera(), 10).slice(),
+      view: floats(world.world_view_ptr(), 67).slice(),
+      placement: floats(world.world_placement(), 16).slice(),
+      tiles: words(world.world_meta(), 4).slice(),
+      visibility: words(world.world_visibility(), 160).slice(),
+    };
+  }
+  throw Error('Unsupported world asset operation');
+}
 const byteCache = new Map();
 let cachedBytes = 0;
 async function bytes(path) {
@@ -71,6 +229,7 @@ self.onmessage = ({ data }) => {
     try {
       let result;
       if (data.kind === 'init') result = await init(data);
+      else if (data.kind === 'world') result = await worldOperation(data);
       else if (data.kind === 'texture') {
         const path = /\.[A-Za-z0-9]+$/.test(data.path) ? data.path : data.path + '.blp';
         if (!/\.blp$/i.test(path)) throw Error('unsupported image format ' + path);
@@ -87,7 +246,11 @@ self.onmessage = ({ data }) => {
           rgba: new Uint8Array(blp.memory.buffer, blp.rgba_ptr(), width * height * 4).slice(),
         };
       } else result = { bytes: await bytes(data.path) };
-      self.postMessage({ id: data.id, result });
+      const transfer = [];
+      for (const value of Object.values(result))
+        if (ArrayBuffer.isView(value)) transfer.push(value.buffer);
+      // The byte cache owns its buffers; transfer only newly generated arrays.
+      self.postMessage({ id: data.id, result }, data.kind === 'world' ? transfer : []);
     } catch (e) {
       self.postMessage({ id: data.id, error: e.message });
     }

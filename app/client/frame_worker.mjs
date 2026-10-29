@@ -447,6 +447,9 @@ listen(async (config) => {
               auth_busy: !!e.glue_auth_request() || !!e.glue_world_busy() || !!characterJob,
               character_busy: !!characterJob,
               character_preview: preview,
+              world_entry: worldSession?.worldEntry
+                ? { ...worldSession.worldEntry, modal: !!luaWorldModal() }
+                : null,
               screen_state: e.glue_screen_state(),
               cursor_hidden: e.frame_cursor_hidden(),
               ...fadeState(),
@@ -464,6 +467,12 @@ listen(async (config) => {
             };
           };
           let authJob, realmSession, realmRefresh, worldJob, worldSession, characterJob;
+          const luaWorldModal = () => {
+            const result = lua.run(
+              'return GlueDialog:IsShown() and GlueDialog.which=="BRWOWSER_CINEMATIC_SKIP"',
+            );
+            return !result.status && lua.result(1);
+          };
           closeAuthentication = () => {
             e.glue_character_connected(0);
             worldJob?.controller.abort();
@@ -724,6 +733,11 @@ listen(async (config) => {
                     ')',
                 );
                 if (reply.status) throw Error(reply.error);
+              } else if (job.kind === 'enter') {
+                const reply = lua.run(
+                  'CharacterSelect:Hide();GlueDialog_Show("BRWOWSER_WORLD_LOADING")',
+                );
+                if (reply.status) throw Error(reply.error);
               } else if (job.kind === 'create') {
                 if (job.result.success) {
                   beginCharacterJob('created-roster', worldSession.refreshCharacters(), {
@@ -788,7 +802,16 @@ listen(async (config) => {
               );
               if (reply.status) throw Error(reply.error);
             }
-            if (!characterJob && actions & 16) {
+            if (!characterJob && actions & 32) {
+              const reply = lua.run(
+                'GlueDialogTypes.BRWOWSER_WORLD_LOADING={text="Loading...",button1=CANCEL,OnAccept=function() DisconnectFromServer() end};' +
+                  'GlueDialogTypes.BRWOWSER_CINEMATIC_SKIP={text="Do you want to skip the introduction?",button1=YES,button2=NO,escapeHides=true,' +
+                  'OnAccept=function() BRWOWSER_CINEMATIC_STOP=true end,OnCancel=function() end};' +
+                  'GlueDialog_Show("BRWOWSER_WORLD_LOADING")',
+              );
+              if (reply.status) throw Error(reply.error);
+              beginCharacterJob('enter', worldSession.enterWorld());
+            } else if (!characterJob && actions & 16) {
               const character = readCharacterCreate(api);
               const reply = lua.run('GlueDialog_Show("CANCEL",CHAR_CREATE_IN_PROGRESS)');
               if (reply.status) throw Error(reply.error);
@@ -844,14 +867,37 @@ listen(async (config) => {
             }
           };
           inputHandler = async (action) => {
-            if (!action || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(action.kind))
+            if (!action || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(action.kind))
               throw Error('Invalid UI action');
             pumpAuthentication();
             pumpRealmActions();
             pumpWorld();
             pumpCharacters();
             let status;
-            if (action.kind === 11) {
+            if (action.kind === 14) {
+              if (!worldSession?.worldEntry) throw Error('World session is unavailable');
+              if (
+                action.operation === 'cinematic-prompt' ||
+                action.operation === 'cinematic-resume'
+              ) {
+                const reply = lua.run(
+                  action.operation === 'cinematic-prompt'
+                    ? 'GlueDialog_Show("BRWOWSER_CINEMATIC_SKIP")'
+                    : 'GlueDialog:Hide()',
+                );
+                if (reply.status) throw Error(reply.error);
+              } else if (action.operation === 'error') {
+                console.warn('World loading: ' + String(action.message));
+                worldSession.close();
+              } else {
+                worldSession.worldAction(action);
+                if (action.operation === 'ready' || action.operation === 'cinematic-end') {
+                  const reply = lua.run('CharacterSelect:Hide();GlueDialog:Hide()');
+                  if (reply.status) throw Error(reply.error);
+                }
+              }
+              status = 0;
+            } else if (action.kind === 11) {
               if (!['SPACE', 'ENTER', 'ESCAPE'].includes(action.key))
                 throw Error('Invalid movie key');
               const reply = lua.run(
@@ -954,6 +1000,11 @@ listen(async (config) => {
             pumpRealmActions();
             pumpWorld();
             pumpCharacters();
+            const cinematicStop = lua.run('return BRWOWSER_CINEMATIC_STOP');
+            if (!cinematicStop.status && lua.result(1)) {
+              lua.run('BRWOWSER_CINEMATIC_STOP=nil');
+              worldSession?.worldAction({ operation: 'cinematic-end' });
+            }
             await flushAudio();
             return {
               ...snapshot(),

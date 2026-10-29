@@ -7,6 +7,7 @@ const root = new URL('../', import.meta.url),
   run = promisify(execFile),
   hash = (b) => createHash('sha256').update(b).digest('hex');
 const builds = [
+  'world',
   'archive-startup',
   'archive-selection',
   'mpq-lookup',

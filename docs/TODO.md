@@ -32,9 +32,10 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 
 ## In-world milestones
 
-- [ ] Enter world with a selected character.
-- [ ] Load maps, terrain, world models, and character placement.
-- [ ] Movement, camera controls, world updates, and interpolation.
+- [ ] Manually validate the new selected-character world-entry path and retry/disconnect recovery.
+- [ ] Manually validate initial outdoor terrain, WMO/static decoration and character placement; finish water, sky, lighting, collision and animated scenery.
+- [ ] Validate initial ground movement/camera controls; implement authoritative world objects, reconciliation, collision, gravity, jumping, swimming and transports.
+- [ ] Validate original race-introduction playback, narration, Escape confirmation and completion against the native client.
 - [ ] In-game UI, objects/NPCs, interaction, inventory, spells, and quests.
 - [ ] Streaming, resource budgets, and performance work for large scenes.
 

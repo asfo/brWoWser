@@ -193,6 +193,8 @@ export async function createCharacterPreview({
         diagonalFraming = false,
         pointLights,
         placement = identityPlacement,
+        viewState,
+        moving = false,
       } = {}) {
         if (disposed || gl.isContextLost()) throw Error('Character preview is unavailable');
         if (
@@ -223,7 +225,7 @@ export async function createCharacterPreview({
           particleView,
           view,
           eye,
-        } = model.view(viewport.width / viewport.height, camera, diagonalFraming);
+        } = viewState || model.view(viewport.width / viewport.height, camera, diagonalFraming);
         gl.uniformMatrix4fv(transform, false, matrix);
         gl.uniformMatrix4fv(location('placement'), false, placement);
         gl.uniform1f(facingLocation, facing);
@@ -251,6 +253,7 @@ export async function createCharacterPreview({
             row ? row.slice(10, 13).map((value) => value * row[9]) : [0.45, 0.45, 0.45],
           );
         }
+        model.motion(moving);
         if (model.animated) {
           gl.bindBuffer(gl.ARRAY_BUFFER, positions);
           gl.bufferSubData(gl.ARRAY_BUFFER, 0, model.sample(elapsed, view));
@@ -362,6 +365,7 @@ export async function createCharacterPreview({
             diagonalFraming,
             pointLights: lastPointLights,
             placement: model.placeAttachment(child.id, elapsed, placement, facing),
+            viewState,
           });
         return {
           triangles,

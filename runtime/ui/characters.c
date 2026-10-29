@@ -392,8 +392,12 @@ static int call(lua_State *L) {
     s->actions |= 4;
     return 0;
   }
-  if (op == 9)
-    return luaL_error(L, "Entering the game world is not implemented yet");
+  if (op == 9) {
+    if (!s->connected || !s->selected || s->selected > s->count)
+      return luaL_error(L, "Select a character before entering the world");
+    s->actions |= 32;
+    return 0;
+  }
   if (op == 10 || op == 11 || op == 12 || op == 13) {
     uint32_t mode = op >= 12;
     if (op & 1) {

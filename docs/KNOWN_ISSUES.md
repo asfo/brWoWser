@@ -28,3 +28,13 @@
 - The runtime is bounded to the selected WotLK build/profile. Executables with different compatibility strings or particle-table layouts are rejected.
 - Cinematics must be present in the supplied local client. Conversion requires `ffmpeg` and `ffprobe`.
 - The first build needs access to pinned public build dependencies. Generated outputs and extracted client data are private local state, not repository contents.
+
+## First outdoor world entry
+
+- The new world-entry path needs manual client validation. Compilation and owner-asset decoding do not prove a successful live entry or native visual equivalence.
+- The initial outdoor scene supports terrain, static WMO groups and nearby static M2 decoration. Water, sky assets, animated decoration, WMO doodad sets, native world lighting, complete material permutations and indoor visibility are incomplete.
+- Ground movement uses loaded terrain heights. Building/object collision, gravity, jumping, swimming, transports and camera collision are not implemented. Stay outdoors near the starting location.
+- The player can use stand/run poses, but animation blending, backward/strafe-specific poses and authoritative object-update reconciliation remain incomplete.
+- Server object-update packets are received but their entities are not reconstructed yet. NPCs, other players, combat, quests and the in-game HUD are not available.
+- Introduction cameras and narration use the current client's CinematicSequences, CinematicCamera and SoundEntries data. Escape confirmation currently reuses the C/Lua glue dialog; the complete in-game cinematic frame and letterboxing are not reconstructed yet.
+- Outdoor streaming keeps a 3x3 terrain neighborhood, a bounded ground cache and up to 96 distinct structure/decoration assets. This is an initial-zone implementation, not unrestricted world traversal.

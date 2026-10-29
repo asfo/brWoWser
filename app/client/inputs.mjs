@@ -1,4 +1,5 @@
 export const modulePaths = {
+  world: '../../engine/world/build/world.wasm',
   particles: '../../engine/particle-runtime/build/runtime.wasm',
   particleTable: '../../engine/particle-draw/build/random-table.private.bin',
   passes: '../../engine/model-passes/build/passes.wasm',

@@ -4,7 +4,7 @@
 
 brWoWser is an experimental browser client for WotLK **3.3.5a, build 12340**. It reconstructs client behavior in C/WebAssembly, runs the original local GlueXML/Lua interface, and presents the game through a WebGL canvas. It does not stream a running desktop client.
 
-The current milestone covers startup, login, realm selection, and character selection/creation previews. **Entering and playing the world is not implemented.** Visual fidelity and server compatibility are still works in progress.
+The current milestone covers startup, login, realm selection, character selection/creation previews, and an initial outdoor world-entry path. **World entry, race introductions and basic ground movement are awaiting manual validation; general gameplay is not implemented.** Visual fidelity and server compatibility are still works in progress.
 
 ## Run locally
 
@@ -41,6 +41,16 @@ Client settings and accepted notices normally persist in browser storage. Origin
 - A local WebSocket-to-TCP bridge and client-side server-protocol handling.
 
 These are implementation milestones, not a claim of complete native equivalence. See [current status](docs/STATUS.md), [known issues](docs/KNOWN_ISSUES.md), and the [TODO list](docs/TODO.md).
+
+## Initial outdoor world preview
+
+Use a newly created Human character on your local server and click **Enter World**. The server decides whether its first-login introduction should run. Terrain, outdoor WMO groups, nearby static decoration and the player model load from your client files.
+
+- **Escape** during the introduction opens a confirmation to skip it.
+- **W/S** move forward/backward; **A/D** turn; **Q/E** strafe.
+- Hold the **right mouse button** to orbit the camera; use the **wheel** to zoom.
+
+Stay outdoors near the starting area. Building collision, jumping/swimming, NPC reconstruction, the in-game HUD, combat and quests are still pending. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
 
 ## Project layout
 
