@@ -735,7 +735,7 @@ listen(async (config) => {
                 if (reply.status) throw Error(reply.error);
               } else if (job.kind === 'enter') {
                 const reply = lua.run(
-                  'CharacterSelect:Hide();GlueDialog_Show("BRWOWSER_WORLD_LOADING")',
+                  'CharacterSelect:Hide();StopGlueMusic();StopGlueAmbience();GlueDialog_Show("BRWOWSER_WORLD_LOADING")',
                 );
                 if (reply.status) throw Error(reply.error);
               } else if (job.kind === 'create') {
