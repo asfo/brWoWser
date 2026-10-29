@@ -1,0 +1,441 @@
+{
+  "profile": {
+    "defaults": [
+      {
+        "name": "BaseMip",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "Sound_AmbienceVolume",
+        "available": true,
+        "type": "string",
+        "value": "0.6"
+      },
+      {
+        "name": "Sound_EnableAllSound",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableAmbience",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableDSPEffects",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableEmoteSounds",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableErrorSpeech",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableHardware",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "Sound_EnableMusic",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnablePetSounds",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableReverb",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "Sound_EnableSFX",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_EnableSoftwareHRTF",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "Sound_EnableSoundWhenGameIsInBG",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "Sound_MasterVolume",
+        "available": true,
+        "type": "string",
+        "value": "1.0"
+      },
+      {
+        "name": "Sound_MusicVolume",
+        "available": true,
+        "type": "string",
+        "value": "0.4"
+      },
+      {
+        "name": "Sound_NumChannels",
+        "available": true,
+        "type": "string",
+        "value": "32"
+      },
+      {
+        "name": "Sound_OutputDriverIndex",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "Sound_OutputQuality",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "Sound_SFXVolume",
+        "available": true,
+        "type": "string",
+        "value": "1.0"
+      },
+      {
+        "name": "Sound_ZoneMusicNoDelay",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "componentTextureLevel",
+        "available": true,
+        "type": "string",
+        "value": "8"
+      },
+      {
+        "name": "desktopGamma",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "environmentDetail",
+        "available": true,
+        "type": "string",
+        "value": "1.0"
+      },
+      {
+        "name": "extShadowQuality",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "farclip",
+        "available": true,
+        "type": "string",
+        "value": "350"
+      },
+      {
+        "name": "ffxDeath",
+        "available": false
+      },
+      {
+        "name": "ffxGlow",
+        "available": false
+      },
+      {
+        "name": "groundEffectDensity",
+        "available": true,
+        "type": "string",
+        "value": "16"
+      },
+      {
+        "name": "groundEffectDist",
+        "available": true,
+        "type": "string",
+        "value": "70.0"
+      },
+      {
+        "name": "gxCursor",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "gxFixLag",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "gxMaximize",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "gxRefresh",
+        "available": true,
+        "type": "string",
+        "value": "75"
+      },
+      {
+        "name": "gxResolution",
+        "available": true,
+        "type": "string",
+        "value": "1024x768"
+      },
+      {
+        "name": "gxStereoConvergence",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "gxStereoEnabled",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "gxStereoSeparation",
+        "available": true,
+        "type": "string",
+        "value": "25"
+      },
+      {
+        "name": "gxTripleBuffer",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "gxVSync",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "gxWindow",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "movieSubtitle",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "particleDensity",
+        "available": true,
+        "type": "string",
+        "value": "1.0"
+      },
+      {
+        "name": "projectedTextures",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "showToolsUI",
+        "available": true,
+        "type": "string",
+        "value": "-1"
+      },
+      {
+        "name": "specular",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      },
+      {
+        "name": "textureFilteringMode",
+        "available": true,
+        "type": "string",
+        "value": "1"
+      },
+      {
+        "name": "weatherDensity",
+        "available": true,
+        "type": "string",
+        "value": "2"
+      },
+      {
+        "name": "windowResizeLock",
+        "available": true,
+        "type": "string",
+        "value": "0"
+      }
+    ],
+    "metadata": {
+      "GetClientExpansionLevel": "number:3",
+      "GetNumCharacters": "number:0",
+      "IsStreamingTrial": "0:nil:nil"
+    }
+  },
+  "events": [
+    "SET_GLUE_SCREEN",
+    "START_GLUE_MUSIC",
+    "DISCONNECTED_FROM_SERVER",
+    "OPEN_STATUS_DIALOG",
+    "UPDATE_STATUS_DIALOG",
+    "CLOSE_STATUS_DIALOG",
+    "ADDON_LIST_UPDATE",
+    "CHARACTER_LIST_UPDATE",
+    "UPDATE_SELECTED_CHARACTER",
+    "OPEN_REALM_LIST",
+    "GET_PREFERRED_REALM_INFO",
+    "UPDATE_SELECTED_RACE",
+    "SELECT_LAST_CHARACTER",
+    "SELECT_FIRST_CHARACTER",
+    "GLUE_SCREENSHOT_SUCCEEDED",
+    "GLUE_SCREENSHOT_FAILED",
+    "PATCH_UPDATE_PROGRESS",
+    "PATCH_DOWNLOADED",
+    "SUGGEST_REALM",
+    "SUGGEST_REALM_WRONG_PVP",
+    "SUGGEST_REALM_WRONG_CATEGORY",
+    "SHOW_SERVER_ALERT",
+    "FRAMES_LOADED",
+    "FORCE_RENAME_CHARACTER",
+    "FORCE_DECLINE_CHARACTER",
+    "SHOW_SURVEY_NOTIFICATION",
+    "PLAYER_ENTER_PIN",
+    "CLIENT_ACCOUNT_MISMATCH",
+    "PLAYER_ENTER_MATRIX",
+    "SCANDLL_ERROR",
+    "SCANDLL_DOWNLOADING",
+    "SCANDLL_FINISHED",
+    "SERVER_SPLIT_NOTICE",
+    "TIMER_ALERT",
+    "ACCOUNT_MESSAGES_AVAILABLE",
+    "ACCOUNT_MESSAGES_HEADERS_LOADED",
+    "ACCOUNT_MESSAGES_BODY_LOADED",
+    "CLIENT_TRIAL",
+    "PLAYER_ENTER_TOKEN",
+    "GAME_ACCOUNTS_UPDATED",
+    "CLIENT_CONVERTED"
+  ],
+  "models": [
+    "Interface\\Glues\\Models\\UI_MainMenu\\UI_MainMenu.m2",
+    "Interface\\Glues\\Models\\UI_MainMenu_Northrend\\UI_MainMenu_Northrend.m2"
+  ],
+  "resources": [
+    "Interface\\GlueXML\\GlueStrings.lua",
+    "Interface\\GlueXML\\GlueLocalization.lua",
+    "Interface\\GlueXML\\GlueParent.lua",
+    "Interface\\GlueXML\\GlueButtons.lua",
+    "Interface\\GlueXML\\GlueTemplates.lua",
+    "Interface\\GlueXML\\GlueDialog.lua",
+    "Interface\\GlueXML\\GlueDropDownMenu.lua",
+    "Interface\\GlueXML\\RealmList.lua",
+    "Interface\\GlueXML\\AddonList.lua",
+    "Interface\\GlueXML\\AccountLogin.lua",
+    "Interface\\GlueXML\\CharacterSelect.lua",
+    "Interface\\GlueXML\\CharacterCreate.lua",
+    "Interface\\GlueXML\\PatchDownload.lua",
+    "Interface\\GlueXML\\MovieFrame.lua",
+    "Interface\\GlueXML\\RealmWizard.lua",
+    "Interface\\GlueXML\\CreditsFrame.lua",
+    "Interface\\GlueXML\\SecurityMatrix.lua",
+    "Interface\\GlueXML\\OptionsFrameTemplates.lua",
+    "Interface\\GlueXML\\TrialConvert.lua",
+    "Interface\\GlueXML\\VideoOptionsFrame.lua",
+    "Interface\\FrameXML\\GraphicsQualityLevels.lua",
+    "Interface\\GlueXML\\OptionsPanelTemplates.lua",
+    "Interface\\GlueXML\\VideoOptionsPanels.lua",
+    "Interface\\GlueXML\\AudioOptionsFrame.lua",
+    "Interface\\GlueXML\\AudioOptionsPanels.lua",
+    "Interface\\GlueXML\\OptionsSelect.lua",
+    "Interface\\GlueXML\\GlueLocalizationPost.lua",
+    "Interface\\GlueXML\\GlueFonts.xml",
+    "Interface\\GlueXML\\GlueFontStyles.xml",
+    "Interface\\GlueXML\\GlueLocalization.xml",
+    "Interface\\GlueXML\\GlueBasicControls.xml",
+    "Interface\\GlueXML\\GlueParent.xml",
+    "Interface\\GlueXML\\GlueButtons.xml",
+    "Interface\\GlueXML\\GlueTemplates.xml",
+    "Interface\\GlueXML\\GlueDialog.xml",
+    "Interface\\GlueXML\\GlueDropDownMenu.xml",
+    "Interface\\GlueXML\\GlueTooltip.xml",
+    "Interface\\GlueXML\\GlueSplash.xml",
+    "Interface\\GlueXML\\RealmList.xml",
+    "Interface\\GlueXML\\AddonList.xml",
+    "Interface\\GlueXML\\AccountLogin.xml",
+    "Interface\\GlueXML\\CharacterSelect.xml",
+    "Interface\\GlueXML\\CharacterCreate.xml",
+    "Interface\\GlueXML\\PatchDownload.xml",
+    "Interface\\GlueXML\\MovieFrame.xml",
+    "Interface\\GlueXML\\RealmWizard.xml",
+    "Interface\\GlueXML\\CreditsFrame.xml",
+    "Interface\\GlueXML\\SecurityMatrix.xml",
+    "Interface\\GlueXML\\OptionsFrameTemplates.xml",
+    "Interface\\GlueXML\\OptionsPanelTemplates.xml",
+    "Interface\\GlueXML\\TrialConvert.xml",
+    "Interface\\GlueXML\\VideoOptionsFrame.xml",
+    "Interface\\GlueXML\\VideoOptionsPanels.xml",
+    "Interface\\GlueXML\\AudioOptionsFrame.xml",
+    "Interface\\GlueXML\\AudioOptionsPanels.xml",
+    "Interface\\GlueXML\\OptionsSelect.xml",
+    "Interface\\GlueXML\\GlueLocalizationPost.xml",
+    "Interface\\GlueXML\\GlueDropDownMenuTemplates.xml"
+  ],
+  "order": [
+    "Interface\\GlueXML\\GlueStrings.lua",
+    "Interface\\GlueXML\\GlueFonts.xml",
+    "Interface\\GlueXML\\GlueFontStyles.xml",
+    "Interface\\GlueXML\\GlueLocalization.xml",
+    "Interface\\GlueXML\\GlueBasicControls.xml",
+    "Interface\\GlueXML\\GlueParent.xml",
+    "Interface\\GlueXML\\GlueButtons.xml",
+    "Interface\\GlueXML\\GlueTemplates.xml",
+    "Interface\\GlueXML\\GlueDialog.xml",
+    "Interface\\GlueXML\\GlueDropDownMenu.xml",
+    "Interface\\GlueXML\\GlueTooltip.xml",
+    "Interface\\GlueXML\\GlueSplash.xml",
+    "Interface\\GlueXML\\RealmList.xml",
+    "Interface\\GlueXML\\AddonList.xml",
+    "Interface\\GlueXML\\AccountLogin.xml",
+    "Interface\\GlueXML\\CharacterSelect.xml",
+    "Interface\\GlueXML\\CharacterCreate.xml",
+    "Interface\\GlueXML\\PatchDownload.xml",
+    "Interface\\GlueXML\\MovieFrame.xml",
+    "Interface\\GlueXML\\RealmWizard.xml",
+    "Interface\\GlueXML\\CreditsFrame.xml",
+    "Interface\\GlueXML\\SecurityMatrix.xml",
+    "Interface\\GlueXML\\OptionsFrameTemplates.xml",
+    "Interface\\GlueXML\\OptionsPanelTemplates.xml",
+    "Interface\\GlueXML\\TrialConvert.xml",
+    "Interface\\GlueXML\\VideoOptionsFrame.xml",
+    "Interface\\GlueXML\\VideoOptionsPanels.xml",
+    "Interface\\GlueXML\\AudioOptionsFrame.xml",
+    "Interface\\GlueXML\\AudioOptionsPanels.xml",
+    "Interface\\GlueXML\\OptionsSelect.xml",
+    "Interface\\GlueXML\\GlueLocalizationPost.xml"
+  ]
+}

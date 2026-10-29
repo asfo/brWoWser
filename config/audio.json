@@ -1,0 +1,77 @@
+{
+  "assets": [
+    {
+      "channel": 0,
+      "id": 12765,
+      "kit": "GS_LichKing",
+      "name": "Sound\\Music\\GlueScreenMusic\\WotLK_main_title.mp3",
+      "archive": "common.MPQ",
+      "file": "music.private.mp3",
+      "bytes": 10883817,
+      "sha256": "056e015902f4eb12c2063b93ca2fa6889a2e0e80c35b54e41ca3e0f4653244e9"
+    },
+    {
+      "channel": 1,
+      "id": 9902,
+      "kit": "GlueScreenIntro",
+      "name": "Sound\\Ambience\\GlueScreen\\GlueScreenLogin.wav",
+      "archive": "common.MPQ",
+      "file": "ambience.private.wav",
+      "bytes": 5380244,
+      "sha256": "c92d2ca2bc7fa186273fe022c5f0e5a1a4945d6801eb700ccf4a7f9ba2193d03"
+    },
+    {
+      "channel": 2,
+      "id": 850,
+      "kit": "igMainMenuOpen",
+      "name": "Sound\\Interface\\uEscapeScreenOpen.wav",
+      "archive": "common.MPQ",
+      "file": "open.private.wav",
+      "bytes": 28454,
+      "sha256": "57c60cd2ee4fba5e22415c6ef808475661726a6821a46731712bc1d7f59acd58"
+    },
+    {
+      "channel": 2,
+      "id": 851,
+      "kit": "igMainMenuClose",
+      "name": "Sound\\Interface\\uEscapeScreenClose.wav",
+      "archive": "common.MPQ",
+      "bytes": 28776,
+      "sha256": "f30f70bbbfbb830382c7cd3f2706493e43f5da4ad3143b78d1a43faf3a8f78bb"
+    }
+  ],
+  "effects": [
+    {
+      "id": 14143,
+      "name": "Sound\\Ambience\\GlueScreen\\Wrath_Login_1.wav",
+      "archive": "common.MPQ",
+      "sha256": "54e496478807cd35594994b5eb6a47379b846b28106498c32b09624062706ec6",
+      "time_ms": 7000,
+      "kit_volume": 0.800000011920929
+    },
+    {
+      "id": 14144,
+      "name": "Sound\\Ambience\\GlueScreen\\Wrath_Login_2.wav",
+      "archive": "common.MPQ",
+      "sha256": "e51c465e0bf1d42d418851d935d696c2c12454aaac3a9748d4dac92caea78c64",
+      "time_ms": 10533,
+      "kit_volume": 0.800000011920929
+    },
+    {
+      "id": 14145,
+      "name": "Sound\\Ambience\\GlueScreen\\Wrath_Login_3.wav",
+      "archive": "common.MPQ",
+      "sha256": "4e8fefd9cacbf6a775dbeeeeac4650e82c7052250d054b4426ac5b9356305fcc",
+      "time_ms": 15067,
+      "kit_volume": 0.800000011920929
+    },
+    {
+      "id": 14146,
+      "name": "Sound\\Ambience\\GlueScreen\\Wrath_Login_4.wav",
+      "archive": "common.MPQ",
+      "sha256": "8915c96baf286150e44e7f4381184278a7eb5ebf507025253d6c9106cf9ce5df",
+      "time_ms": 26233,
+      "kit_volume": 0.800000011920929
+    }
+  ]
+}

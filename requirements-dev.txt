@@ -1,0 +1,3 @@
+# Public development tools only. Never install into a client or capture folder.
+ruff==0.14.14
+clang-format==21.1.8

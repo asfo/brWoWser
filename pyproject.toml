@@ -1,0 +1,20 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+  "Data", "Interface", "WTF", "Cache", "Logs", "Errors", "Screenshots",
+  "reference-original", "local-client", "backups", "mods", "dlls",
+  "build", "captures", "runs", "toolchain", "client-*",
+  "baseline-*", "evidence", "revisions", "runtime-logs", "node_modules", ".venv",
+]
+
+[tool.ruff.lint]
+# Correctness rules first; formatting is handled by Ruff's formatter.
+select = ["E4", "E7", "E9", "F"]
+# Platform bindings may retain unused intermediates while reconstruction continues.
+ignore = ["F401", "F841"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

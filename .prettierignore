@@ -1,0 +1,12 @@
+**/build/**
+**/cache/**
+**/node_modules/**
+engine/lua-runtime/tools/**
+.local/**
+validation/**
+research-tools/**
+reverse-engineering-notes/**
+Data/**
+Interface/**
+WTF/**
+azerothcore-wotlk/**

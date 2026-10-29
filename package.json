@@ -1,0 +1,34 @@
+{
+  "name": "brwowser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "brWoWser \u2014 World of Warcraft: Wrath of the Lich King in a browser",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "format": "python3 scripts/code_style.py format",
+    "format:check": "python3 scripts/code_style.py format-check",
+    "lint": "python3 scripts/code_style.py lint",
+    "dev": "node scripts/dev.mjs",
+    "dev:restart": "node scripts/restart_dev.mjs",
+    "bridge": "node scripts/network_bridge.mjs",
+    "build:auth": "node scripts/build_auth.mjs",
+    "dev:fresh": "node scripts/dev.mjs --fresh",
+    "setup": "python3 tools/setup.py",
+    "build": "node tools/build.mjs",
+    "start": "node scripts/dev.mjs",
+    "serve": "node app/client/server.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@yowasp/clang": "21.1.4-3",
+    "eslint": "^9.39.5",
+    "globals": "14.0.0",
+    "prettier": "3.9.8"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}
