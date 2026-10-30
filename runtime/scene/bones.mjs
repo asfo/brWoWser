@@ -1,7 +1,8 @@
+import { instantiate } from '../wasm/instantiate.mjs';
 export async function createBonePoseRuntime(wasm, model, prepared, { normalizer = 0 } = {}) {
   if (model.byteLength > 8388608 || prepared.byteLength % 48 || prepared.byteLength > 65536 * 48)
     throw Error('pose input capacity');
-  const { instance } = await WebAssembly.instantiate(wasm, {}),
+  const { instance } = await instantiate(wasm),
     e = instance.exports,
     count = prepared.byteLength / 48;
   if (e.set_normalizer(normalizer)) throw Error('invalid normalizer mode');

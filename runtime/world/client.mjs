@@ -146,7 +146,7 @@ export async function createWorldClient({
               dispose: () => preview.dispose(),
               draw: (view, placement) =>
                 preview.draw({
-                  elapsed: performance.now() - started,
+                  elapsed: view.globalMs,
                   viewState: view,
                   placement,
                   clear: false,
@@ -353,34 +353,25 @@ export async function createWorldClient({
     function prepareVisible(state) {
       const jobs = [],
         seen = new Set();
-      let pending = false;
       for (const tile of tiles.values())
         for (const object of visibleObjects(state, tile)) {
-          if (object.kind === 'wmo' && !decoration.get(object.id + ':' + object.path)?.ready)
-            pending = true;
           jobs.push(loadDecoration(object));
           if (seen.has(object.path)) continue;
           seen.add(object.path);
-          if (!structures.get(object.path)?.ready) pending = true;
           jobs.push(loadStructure(object.path, object.kind));
         }
       for (const child of visibleDecor(state))
         if (!seen.has(child.path)) {
           seen.add(child.path);
-          if (!structures.get(child.path)?.ready) pending = true;
           jobs.push(loadStructure(child.path, 'm2'));
         }
-      if (pending && cinematic) voice?.pause();
       return Promise.all(jobs);
     }
     onProgress({ phase: 'terrain' });
     const initial = await sample(0);
     await loadTile(initial.tiles[0], initial.tiles[1], true);
-    await Promise.all(
-      Array.from({ length: 9 }, (_, i) =>
-        loadTile(initial.tiles[0] + (i % 3) - 1, initial.tiles[1] + Math.floor(i / 3) - 1),
-      ),
-    );
+    // Warm the required camera/player tiles first. Neighbors stream during
+    // presentation instead of delaying entry behind nine complete texture sets.
     await loadTile(initial.tiles[2], initial.tiles[3], true);
     onProgress({ phase: 'scene' });
     const warmed = await sample(0);
@@ -521,7 +512,6 @@ export async function createWorldClient({
           current = tiles.get(x + ':' + y);
         if (!current?.renderer) {
           if (current?.error) throw current.error;
-          voice?.pause();
           await loadTile(x, y, true);
           state = await sample(0);
         }
@@ -539,10 +529,16 @@ export async function createWorldClient({
           }
         }
         const revision = decorRevision;
-        await prepareVisible(state);
+        // Streaming must not stall presentation or repeatedly pause narration.
+        // Only the explicit cinematic-to-player handoff waits for its scenery.
+        const visibleReady = prepareVisible(state);
+        if (needsHandoff) await visibleReady;
+        else visibleReady.catch((error) => onIssue(error.message));
         if (needsHandoff || revision !== decorRevision) {
           state = await sample(0);
-          await prepareVisible(state);
+          const decorationReady = prepareVisible(state);
+          if (needsHandoff) await decorationReady;
+          else decorationReady.catch((error) => onIssue(error.message));
           needsHandoff = false;
         }
         if (cinematic && !modal && !introductionPending) {
@@ -568,8 +564,10 @@ export async function createWorldClient({
           view: state.view.subarray(0, 16),
           projection: state.view.subarray(16, 32),
           transform: state.view.subarray(32, 48),
+          relativeTransform: state.view.subarray(67, 83),
           particleView: state.view.subarray(48, 64),
           eye: state.view.subarray(64, 67),
+          globalMs: performance.now() - started,
         };
         const now = performance.now(),
           flags = state.player[4];
@@ -633,7 +631,7 @@ export async function createWorldClient({
             triangles += renderer.draw(view, object.placement);
         if (!cinematic)
           player.draw({
-            elapsed: performance.now() - started,
+            elapsed: view.globalMs,
             facing: state.player[3],
             moving: !!(state.player[4] & 15),
             viewState: view,
@@ -650,6 +648,9 @@ export async function createWorldClient({
           tiles: [...tiles.values()].filter((t) => t.renderer).length,
           position: Array.from(state.player.subarray(0, 4)),
           cinematic_ms: Math.floor(cinematicMs),
+          game_time_minutes:
+            (timeAnchor + (performance.timeOrigin + performance.now() - timeReceived) / 60000) %
+            1440,
           skipped: confirmedSkip,
         };
       },

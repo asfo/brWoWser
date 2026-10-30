@@ -194,7 +194,7 @@ async function worldOperation(data) {
     return {
       player: floats(world.world_player(), 8).slice(),
       camera: floats(world.world_camera(), 10).slice(),
-      view: floats(world.world_view_ptr(), 67).slice(),
+      view: floats(world.world_view_ptr(), 83).slice(),
       placement: floats(world.world_placement(), 16).slice(),
       tiles: words(world.world_meta(), 4).slice(),
       visibility: words(world.world_visibility(), 160).slice(),

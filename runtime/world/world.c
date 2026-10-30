@@ -426,7 +426,7 @@ uint32_t world_cinematic_duration(void) {
   return camera_duration;
 }
 
-static float world_view_output[67];
+static float world_view_output[83];
 uint32_t world_view_ptr(void) {
   return (uint32_t)(uintptr_t)world_view_output;
 }
@@ -506,6 +506,16 @@ uint32_t world_view(float aspect) {
     for (int row = 0; row < 4; row++)
       for (int k = 0; k < 4; k++)
         combined[column * 4 + row] += p[k * 4 + row] * v[column * 4 + k];
+  /* Keep culling in world coordinates, but draw camera-relative positions to
+   * avoid subtracting large translations after the projection multiply. */
+  float *relative = camera_output + 67;
+  for (int column = 0; column < 4; column++)
+    for (int row = 0; row < 4; row++) {
+      relative[column * 4 + row] = column == 3 ? p[12 + row] : 0;
+      if (column < 3)
+        for (int k = 0; k < 3; k++)
+          relative[column * 4 + row] += p[k * 4 + row] * v[column * 4 + k];
+    }
   for (int i = 0; i < 10; i++)
     particle[i] = (i % 4 == 2 ? -v[i] : v[i]);
   for (int i = 0; i < 3; i++)

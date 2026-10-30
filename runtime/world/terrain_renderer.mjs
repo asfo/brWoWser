@@ -33,7 +33,7 @@ layout(location=0) in vec3 position;layout(location=1) in vec3 normal;
 layout(location=2) in vec2 uv;layout(location=3) in vec3 tint;
 uniform mat4 transform;uniform vec3 eye;
 out vec2 coords;out vec3 shade;out float distanceToEye;
-void main(){coords=uv;shade=tint*(.6+.4*max(dot(normalize(normal),normalize(vec3(-.4,-.3,.8))),0.));distanceToEye=length(position-eye);gl_Position=transform*vec4(position,1.);}`,
+void main(){coords=uv;shade=tint*(.6+.4*max(dot(normalize(normal),normalize(vec3(-.4,-.3,.8))),0.));distanceToEye=length(position-eye);gl_Position=transform*vec4(position-eye,1.);}`,
       ),
     );
     gl.attachShader(
@@ -132,7 +132,7 @@ color=vec4(mix(c*shade,vec3(.53,.67,.78),clamp((distanceToEye-650.)/450.,0.,1.))
         if (disposed) return 0;
         gl.useProgram(program);
         gl.bindVertexArray(vao);
-        gl.uniformMatrix4fv(transform, false, view.transform);
+        gl.uniformMatrix4fv(transform, false, view.relativeTransform);
         gl.uniform3fv(eye, view.eye);
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.LEQUAL);

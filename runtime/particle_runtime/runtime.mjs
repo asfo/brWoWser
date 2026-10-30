@@ -1,3 +1,4 @@
+import { instantiate } from '../wasm/instantiate.mjs';
 /* Transport and browser clock admission only. Simulation, original records,
  * attachment construction, random consumption and generated quads are C/WASM. */
 export async function createParticleRuntime({
@@ -18,7 +19,7 @@ export async function createParticleRuntime({
     throw Error('invalid particle resources');
   const {
     instance: { exports: e },
-  } = await WebAssembly.instantiate(wasm, {});
+  } = await instantiate(wasm);
   new Uint8Array(e.memory.buffer, e.input_ptr(), model.length).set(model);
   new Uint8Array(e.memory.buffer, e.runtime_table_ptr(), 256).set(randomTable);
   let previousGlobal = null,

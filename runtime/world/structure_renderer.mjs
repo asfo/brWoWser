@@ -33,7 +33,7 @@ export function createStructureRenderer(gl, mesh, materials, images) {
         `#version 300 es
 precision highp float;layout(location=0) in vec3 position;layout(location=1) in vec3 normal;layout(location=2) in vec2 uv;layout(location=3) in vec3 tint;
 uniform mat4 transform;uniform mat4 placement;uniform vec3 eye;out vec2 coords;out vec3 shade;out float distanceToEye;
-void main(){vec4 p=placement*vec4(position,1.);coords=uv;shade=tint*(.7+.3*max(dot(normalize(mat3(placement)*normal),normalize(vec3(-.4,-.3,.8))),0.));distanceToEye=length(p.xyz-eye);gl_Position=transform*p;}`,
+void main(){vec4 p=placement*vec4(position,1.);coords=uv;shade=tint*(.7+.3*max(dot(normalize(mat3(placement)*normal),normalize(vec3(-.4,-.3,.8))),0.));distanceToEye=length(p.xyz-eye);gl_Position=transform*vec4(p.xyz-eye,1.);}`,
       ),
     );
     gl.attachShader(
@@ -111,7 +111,7 @@ void main(){vec4 c=texture(image,coords);if(mode==1&&c.a<.5)discard;c.rgb*=shade
         gl.depthFunc(gl.LEQUAL);
         gl.depthMask(true);
         gl.disable(gl.CULL_FACE);
-        gl.uniformMatrix4fv(transform, false, view.transform);
+        gl.uniformMatrix4fv(transform, false, view.relativeTransform);
         gl.uniformMatrix4fv(placement, false, matrix);
         gl.uniform3fv(eye, view.eye);
         gl.activeTexture(gl.TEXTURE0);

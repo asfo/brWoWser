@@ -1,3 +1,4 @@
+import { instantiate } from '../wasm/instantiate.mjs';
 import { createBonePoseRuntime } from '../scene/bones.mjs';
 import { createUVTranslationRuntime } from '../scene/uv.mjs';
 import { composeCharacterSkin } from './catalog.mjs';
@@ -24,7 +25,7 @@ function binary(bytes, magic, minimum, maximum) {
 }
 async function moduleExports(wasm) {
   if (!wasm) throw Error('Character decoder module unavailable');
-  return (await WebAssembly.instantiate(wasm, {})).instance.exports;
+  return (await instantiate(wasm)).instance.exports;
 }
 function copyIn(e, pointer, bytes) {
   if (pointer > e.memory.buffer.byteLength || bytes.length > e.memory.buffer.byteLength - pointer)

@@ -171,6 +171,15 @@ listen(async (config) => {
         afterLoad: async (api) => {
           context = api;
           const { e, lua, name, input } = api;
+          // Preserve the original confirmation dialog and capture its character GUID
+          // when it opens. CharacterSelect.lua owns CharacterSelect_Delete itself.
+          const deletionHook = lua.run(
+            'local original=CharacterDeleteDialog_OnShow;' +
+              'CharacterDeleteDialog_OnShow=function() ' +
+              'BrwowserBeginCharacterDeletion();CharacterDeleteEditBox:SetText("");' +
+              'original();CharacterDeleteEditBox:SetFocus() end',
+          );
+          if (deletionHook.status) throw Error(deletionHook.error);
           if (config.viewport && e.frame_viewport(config.viewport.width, config.viewport.height))
             throw Error('Settled viewport profile');
           const drainMovies = () => {

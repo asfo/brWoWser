@@ -592,9 +592,6 @@ static int call(lua_State *L) {
       return luaL_error(L, "Select a character before deleting it");
     s->delete_index = s->selected;
     memcpy(s->delete_guid, s->rows[s->selected - 1].guid, sizeof(s->delete_guid));
-    if (luaL_dostring(L, "CharacterDeleteEditBox:SetText(\"\");CharacterDeleteDialog:Show();"
-                         "CharacterDeleteEditBox:SetFocus()"))
-      return lua_error(L);
     return 0;
   }
   if (op == 36) {
@@ -656,7 +653,7 @@ uint32_t bw_characters_register(BwCharacters *s) {
                          "UpdateCustomizationScene",
                          "CreateCharacter",
                          "GetRandomName",
-                         "CharacterSelect_Delete",
+                         "BrwowserBeginCharacterDeletion",
                          "DeleteCharacter"};
   for (uint32_t i = 0; i < sizeof(names) / sizeof(*names); i++) {
     lua_rawgeti(s->L, LUA_REGISTRYINDEX, s->reference);
