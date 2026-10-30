@@ -234,9 +234,23 @@ const launch = (event) => {
         }
         return;
       }
+      if (entry.phase === 'load-error') {
+        if (worldKey || worldClient) {
+          worldGeneration++;
+          worldKey = '';
+          worldClient?.dispose();
+          worldClient = null;
+        }
+        window.worldStatus = { phase: 'error', message: entry.error };
+        return;
+      }
       worldClient?.sync(entry);
       if (!entry.location) return;
-      const key = JSON.stringify([entry.character.guid, entry.location.map]);
+      const key = JSON.stringify([
+        entry.character.guid,
+        entry.location.map,
+        entry.resourceRevision || 0,
+      ]);
       if (key === worldKey) return;
       worldKey = key;
       const generation = ++worldGeneration;

@@ -31,6 +31,8 @@
 
 ## First outdoor world entry
 
+- Resource-load failures show a Retry/Cancel dialog while preserving the world connection. They are reported separately from transport/server disconnections; manual recovery validation is still pending.
+
 - The new world-entry path needs manual client validation. Compilation and owner-asset decoding do not prove a successful live entry or native visual equivalence.
 - The initial outdoor scene supports terrain, static WMO groups and nearby static M2 decoration. Water, sky assets, animated decoration, WMO doodad sets, native world lighting, complete material permutations and indoor visibility are incomplete.
 - Ground movement uses loaded terrain heights. Building/object collision, gravity, jumping, swimming, transports and camera collision are not implemented. Stay outdoors near the starting location.

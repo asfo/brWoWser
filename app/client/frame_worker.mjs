@@ -805,6 +805,7 @@ listen(async (config) => {
             if (!characterJob && actions & 32) {
               const reply = lua.run(
                 'GlueDialogTypes.BRWOWSER_WORLD_LOADING={text="Loading...",button1=CANCEL,OnAccept=function() DisconnectFromServer() end};' +
+                  'GlueDialogTypes.BRWOWSER_WORLD_LOAD_ERROR={button1=RETRY or "Retry",button2=CANCEL,OnAccept=function() BRWOWSER_WORLD_RETRY=true end,OnCancel=function() DisconnectFromServer() end};' +
                   'GlueDialogTypes.BRWOWSER_CINEMATIC_SKIP={text="Do you want to skip the introduction?",button1=YES,button2=NO,escapeHides=true,' +
                   'OnAccept=function() BRWOWSER_CINEMATIC_STOP=true end,OnCancel=function() end};' +
                   'GlueDialog_Show("BRWOWSER_WORLD_LOADING")',
@@ -888,7 +889,15 @@ listen(async (config) => {
                 if (reply.status) throw Error(reply.error);
               } else if (action.operation === 'error') {
                 console.warn('World loading: ' + String(action.message));
-                worldSession.close();
+                worldSession.worldAction({ operation: 'resource-error', message: action.message });
+                const reply = lua.run(
+                  'GlueDialog_Show("BRWOWSER_WORLD_LOAD_ERROR",' +
+                    JSON.stringify(
+                      'Unable to load game resources.\n' + worldSession.worldEntry.error,
+                    ) +
+                    ')',
+                );
+                if (reply.status) throw Error(reply.error);
               } else {
                 worldSession.worldAction(action);
                 if (action.operation === 'ready' || action.operation === 'cinematic-end') {
@@ -1004,6 +1013,13 @@ listen(async (config) => {
             if (!cinematicStop.status && lua.result(1)) {
               lua.run('BRWOWSER_CINEMATIC_STOP=nil');
               worldSession?.worldAction({ operation: 'cinematic-end' });
+            }
+            const resourceRetry = lua.run('return BRWOWSER_WORLD_RETRY');
+            if (!resourceRetry.status && lua.result(1)) {
+              lua.run('BRWOWSER_WORLD_RETRY=nil');
+              worldSession?.worldAction({ operation: 'retry' });
+              const reply = lua.run('GlueDialog_Show("BRWOWSER_WORLD_LOADING")');
+              if (reply.status) throw Error(reply.error);
             }
             await flushAudio();
             return {

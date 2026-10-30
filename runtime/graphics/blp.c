@@ -1,4 +1,4 @@
-/* Test-owned bounded BLP2/BC1+BC2+BC3 (DXT1+DXT3+DXT5) base-mip decoder; not original client code. */
+/* Bounded BLP2 paletted/BC1/BC2/BC3 base-mip decoder. */
 typedef unsigned char u8;
 typedef unsigned int u32;
 static u8 input[1048576], rgba[512 * 512 * 4];
@@ -34,7 +34,7 @@ u32 decode_blp(u32 n) {
   if (le(0, 4) == 0x32504c42 && le(4, 4) == 1 && input[8] == 1) {
     u32 w = le(12, 4), h = le(16, 4), off = le(20, 4), size = le(84, 4), depth = input[9];
     if (n < 1172 || !w || !h || w > 512 || h > 512 || (w & (w - 1)) || (h & (h - 1)) ||
-        (depth != 0 && depth != 1 && depth != 4 && depth != 8) || input[11] > 1)
+        (depth != 0 && depth != 1 && depth != 4 && depth != 8))
       return 3;
     u32 count = w * h, alphaBytes = (count * depth + 7) / 8;
     if (off < 1172 || off > n || size > n - off || size != count + alphaBytes)
@@ -57,11 +57,12 @@ u32 decode_blp(u32 n) {
   }
   if (le(0, 4) != 0x32504c42 || le(4, 4) != 1 || input[8] != 2 ||
       !(((input[9] == 0 || input[9] == 1) && input[10] == 0) ||
-        ((input[9] == 4 || input[9] == 8) && input[10] == 1) ||
-        (input[9] == 8 && input[10] == 7)) ||
-      input[11] > 1)
+        ((input[9] == 4 || input[9] == 8) && input[10] == 1) || (input[9] == 8 && input[10] == 7)))
     return 2;
   u32 w = le(12, 4), h = le(16, 4), off = le(20, 4), size = le(84, 4);
+  /* Owner terrain assets also use mip marker 2. It is not an encoding
+   * selector or a reliable Boolean. Only the base mip is consumed here;
+   * its dimensions, byte count and source range are validated below. */
   if (!w || !h || w > 512 || h > 512 || (w & (w - 1)) || (h & (h - 1)) || w % 4 || h % 4)
     return 3;
   u32 step = input[9] <= 1 ? 8 : 16;

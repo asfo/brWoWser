@@ -210,7 +210,21 @@ export function connectWorldSession({
         worldAction(action) {
           if (closed) throw closeError;
           if (!worldEntry?.location) throw Error('World entry is not ready');
-          if (action.operation === 'ready') {
+          if (action.operation === 'resource-error') {
+            worldEntry = {
+              ...worldEntry,
+              phase: 'load-error',
+              error: String(action.message || 'World resources could not be loaded').slice(0, 512),
+            };
+          } else if (action.operation === 'retry') {
+            if (worldEntry.phase !== 'load-error') return;
+            worldEntry = {
+              ...worldEntry,
+              phase: 'loading',
+              error: null,
+              resourceRevision: (worldEntry.resourceRevision || 0) + 1,
+            };
+          } else if (action.operation === 'ready') {
             if (worldEntry.phase !== 'loading') return;
             send(WORLD.activeMover, characterGuid(worldEntry.character.guid));
             worldEntry = { ...worldEntry, phase: 'world' };
