@@ -38,7 +38,7 @@ DOCS = {
     "KNOWN_ISSUES.md",
     "THIRD_PARTY.md",
 }
-ROOTS = {"runtime", "engine", "app", "tools", "config", "scripts", "docs"}
+ROOTS = {".github", "runtime", "engine", "app", "tools", "config", "scripts", "docs"}
 PRIVATE_PARTS = {
     "build",
     "cache",
@@ -68,6 +68,8 @@ def selected(name):
         return False
     if len(p.parts) == 1:
         return name in ROOT_FILES
+    if p.parts[0] == ".github":
+        return name == ".github/ISSUE_TEMPLATE/bug_report.md"
     if p.parts[0] not in ROOTS or any(part in PRIVATE_PARTS for part in p.parts[1:-1]):
         return False
     if name in {

@@ -400,12 +400,9 @@ export async function loadCharacterModel({
       (metadata.attachments || []).map((item) => item.gripHand ?? item.attachmentId),
     );
     pose = await createBonePoseRuntime(modules.bones, idle.model, prepared);
-    const first = pose.sample(0, 0);
-    if (first.vertexValid.some((value) => !value)) {
-      onIssue(
-        'Camera-dependent or unsupported vertices retain their bind pose until a view is supplied',
-      );
-    }
+    // The loading pass has no camera yet; billboard vertices are expected to
+    // become valid when the renderer supplies its actual view.
+    pose.sample(0, 0);
     duration = idle.duration;
   } catch (error) {
     pose = null;
@@ -433,7 +430,8 @@ export async function loadCharacterModel({
   }
   let cachedTime = -1,
     cachedView,
-    cachedPose;
+    cachedPose,
+    warnedUnsupportedPose = false;
   let runPose,
     runDuration = 0,
     moving = false;
@@ -458,6 +456,12 @@ export async function loadCharacterModel({
       const runtime = moving && runPose ? runPose : pose;
       const clock = moving && runPose ? runDuration : duration;
       cachedPose = runtime?.sample(clock ? ms % clock : 0, ms, view);
+      if (view && cachedPose && !warnedUnsupportedPose && cachedPose.vertexValid.some((v) => !v)) {
+        warnedUnsupportedPose = true;
+        onIssue(
+          'Some vertices still require unsupported bone behavior after the camera was supplied',
+        );
+      }
       if (cachedPose)
         for (let i = 0; i < cachedPose.vertexValid.length; i++)
           if (!cachedPose.vertexValid[i]) {

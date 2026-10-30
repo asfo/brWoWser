@@ -36,7 +36,10 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 - [ ] Manually validate initial outdoor terrain, WMO/static decoration and character placement; finish water, sky, lighting, collision and animated scenery.
 - [ ] Validate initial ground movement/camera controls; implement authoritative world objects, reconciliation, collision, gravity, jumping, swimming and transports.
 - [ ] Compare race introductions, sky/cloud rendering, WMO decoration, particles, narration and skip-to-player handoff against the native client.
-- [ ] In-game UI, objects/NPCs, interaction, inventory, spells, and quests.
+- [ ] Load original in-game FrameXML/Lua resources in a separate lifecycle from GlueXML; keep UI state/layout in C/WASM and composite inside the game canvas.
+- [ ] Decode authoritative player/object fields needed by Unit and action APIs; deliver initial world-entry and player-state events to the original Lua frames.
+- [ ] Bring up the minimal in-game HUD (player frame, action bars, chat, main menu), then enable controls against real server state.
+- [ ] In-game objects/NPCs, interaction, inventory, spells, and quests.
 - [ ] Streaming, resource budgets, and performance work for large scenes.
 
 ## Hosting and release preparation

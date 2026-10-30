@@ -1092,6 +1092,12 @@ window.addEventListener(
   (event) => {
     if (event.altKey && event.key === 'Enter') return;
     const key = { Escape: 'ESCAPE', Enter: 'ENTER', ' ': 'SPACE' }[event.key];
+    // A held confirmation key must not become Enter World after a modal closes.
+    if (key === 'ENTER' && event.repeat) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (
       (key === 'ESCAPE' || key === 'ENTER') &&
       window.uiInput &&
@@ -1101,6 +1107,8 @@ window.addEventListener(
           (key === 'ESCAPE' ||
             [
               'GlueDialog',
+              'CharacterDeleteDialog',
+              'CharacterRenameDialog',
               'RealmList',
               'CharacterSelect',
               'CharacterCreate',
@@ -1108,6 +1116,8 @@ window.addEventListener(
             ].includes(r.name)) &&
           [
             'GlueDialog',
+            'CharacterDeleteDialog',
+            'CharacterRenameDialog',
             'RealmList',
             'VideoOptionsFrame',
             'AudioOptionsFrame',

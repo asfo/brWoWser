@@ -19,6 +19,11 @@
 !/config/
 !/scripts/
 !/docs/
+!/.github/
+/.github/*
+!/.github/ISSUE_TEMPLATE/
+/.github/ISSUE_TEMPLATE/*
+!/.github/ISSUE_TEMPLATE/bug_report.md
 
 # Generated outputs, dependencies, private state and game content are not source.
 **/build/

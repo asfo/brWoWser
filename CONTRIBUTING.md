@@ -22,3 +22,11 @@ npm run lint
 C uses clang-format, Python uses Ruff, and JavaScript uses Prettier/ESLint. `scripts/repository_policy.py` limits formatting and source selection to distributable files, keeping private local material untouched.
 
 Runtime and visual review is currently performed manually in the client. No automated client tests or CI workflows are shipped. Use `npm run build` for compilation and provide concise manual reproduction steps for behavior changes.
+
+## Reporting bugs
+
+Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md). Report one
+problem per issue and include the starting state, exact numbered steps, expected
+behavior, actual behavior, environment, and relevant errors. Distinguish clicking
+a confirmation button from pressing Enter. Do not include credentials or client
+assets.

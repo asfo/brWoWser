@@ -748,7 +748,13 @@ listen(async (config) => {
                 );
                 if (reply.status) throw Error(reply.error);
               } else if (job.kind === 'delete') {
-                if (job.result.success) {
+                if (job.result.uncertain) {
+                  beginCharacterJob('deleted-roster', worldSession.refreshCharacters(), {
+                    notice:
+                      'The server did not confirm character deletion. The list has been refreshed. ' +
+                      'Please reconnect before continuing. The character may still be online on the server.',
+                  });
+                } else if (job.result.success) {
                   beginCharacterJob('deleted-roster', worldSession.refreshCharacters());
                 } else {
                   const reply = lua.run(
@@ -801,6 +807,12 @@ listen(async (config) => {
                       : 'UpdateCharacterList()',
                 );
                 if (reply.status) throw Error(reply.error);
+                if (job.notice) {
+                  const notice = lua.run(
+                    'GlueDialog_Show("OKAY",' + JSON.stringify(job.notice) + ')',
+                  );
+                  if (notice.status) throw Error(notice.error);
+                }
               }
             }
             const actions = e.glue_character_actions();
@@ -826,7 +838,7 @@ listen(async (config) => {
               );
               if (reply.status) throw Error(reply.error);
             }
-            if (!characterJob && actions & 32) {
+            if (!characterJob && actions & 32 && !(actions & 64)) {
               const reply = lua.run(
                 'GlueDialogTypes.BRWOWSER_WORLD_LOADING={text="Loading...",button1=CANCEL,OnAccept=function() DisconnectFromServer() end};' +
                   'GlueDialogTypes.BRWOWSER_WORLD_LOAD_ERROR={button1=RETRY or "Retry",button2=CANCEL,OnAccept=function() BRWOWSER_WORLD_RETRY=true end,OnCancel=function() DisconnectFromServer() end};' +
@@ -948,7 +960,12 @@ listen(async (config) => {
               const reply = lua.run(
                 'local key=' +
                   JSON.stringify(action.key) +
-                  ';for _,name in ipairs({"GlueDialog","RealmList","VideoOptionsFrame","AudioOptionsFrame","OptionsSelectFrame","CinematicsFrame","CreditsFrame","CharacterCreate","CharacterSelect","RealmWizard"}) do local frame=_G[name];if (key=="ESCAPE" or name=="GlueDialog" or name=="RealmList" or name=="CharacterCreate" or name=="CharacterSelect" or name=="RealmWizard") and frame and frame:IsVisible() then local handler=frame:GetScript("OnKeyDown");if handler then handler(frame,key) end;break end end',
+                  ';local consumed=false;' +
+                  'for _,name in ipairs({"CharacterDelete","CharacterRename"}) do ' +
+                  'local dialog=_G[name.."Dialog"];if dialog and dialog:IsVisible() then ' +
+                  'local edit=_G[name.."EditBox"];local handler=edit:GetScript(key=="ENTER" and "OnEnterPressed" or "OnEscapePressed");' +
+                  'if handler then handler(edit) end;consumed=true;break end end;' +
+                  'if not consumed then for _,name in ipairs({"GlueDialog","RealmList","VideoOptionsFrame","AudioOptionsFrame","OptionsSelectFrame","CinematicsFrame","CreditsFrame","CharacterCreate","CharacterSelect","RealmWizard"}) do local frame=_G[name];if (key=="ESCAPE" or name=="GlueDialog" or name=="RealmList" or name=="CharacterCreate" or name=="CharacterSelect" or name=="RealmWizard") and frame and frame:IsVisible() then local handler=frame:GetScript("OnKeyDown");if handler then handler(frame,key) end;break end end end',
               );
               if (reply.status) throw Error(reply.error);
               status = 0;

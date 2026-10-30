@@ -73,6 +73,7 @@ export function connectWorldSession({
       rosterRequest = null,
       creationRequest = null,
       deletionRequest = null,
+      deletionUnconfirmed = false,
       entryRequest = null,
       worldEntry = null;
     let timer = setTimeout(() => close(Error('World authentication timeout')), 20000);
@@ -196,6 +197,10 @@ export function connectWorldSession({
         },
         enterWorld() {
           if (closed) return Promise.reject(closeError);
+          if (deletionUnconfirmed)
+            return Promise.reject(
+              Error('A character deletion is unconfirmed. Please reconnect before continuing.'),
+            );
           if (entryRequest) return entryRequest.promise;
           if (worldEntry || creationRequest || deletionRequest || rosterRequest || !roster.selected)
             return Promise.reject(Error('Character is not ready to enter the world'));
@@ -274,6 +279,10 @@ export function connectWorldSession({
         },
         createCharacter(character) {
           if (closed) return Promise.reject(closeError);
+          if (deletionUnconfirmed)
+            return Promise.reject(
+              Error('A character deletion is unconfirmed. Please reconnect before continuing.'),
+            );
           if (creationRequest || deletionRequest || rosterRequest || worldEntry)
             return Promise.reject(Error('A character operation is already pending'));
           let bytes;
@@ -298,6 +307,10 @@ export function connectWorldSession({
         },
         deleteCharacter(guid) {
           if (closed) return Promise.reject(closeError);
+          if (deletionUnconfirmed)
+            return Promise.reject(
+              Error('A character deletion is unconfirmed. Please reconnect before continuing.'),
+            );
           if (worldEntry || rosterRequest || creationRequest || deletionRequest)
             return Promise.reject(Error('A character operation is already pending'));
           if (!roster.rows.some((row) => row.guid[0] === guid?.[0] && row.guid[1] === guid?.[1]))
@@ -306,7 +319,14 @@ export function connectWorldSession({
           job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
           deletionRequest = job;
           // An uncertain mutation is never retried automatically.
-          job.timer = setTimeout(() => close(Error('Character deletion response timeout')), 20000);
+          job.timer = setTimeout(() => {
+            if (deletionRequest !== job) return;
+            deletionRequest = null;
+            deletionUnconfirmed = true;
+            // Preserve the connection for read-only roster reconciliation, but
+            // require a fresh session before another mutation or world entry.
+            job.resolve({ success: false, uncertain: true });
+          }, 20000);
           try {
             send(OPCODE.charDeleteRequest, characterGuid(guid));
           } catch (error) {
@@ -522,6 +542,10 @@ export function connectWorldSession({
         return;
       }
       if (opcode === OPCODE.charDelete) {
+        if (authed && ready && deletionUnconfirmed && !deletionRequest) {
+          characterDeleteResult(body); // Validate a late reply; never apply it to a new request.
+          return;
+        }
         if (!authed || !ready || !deletionRequest)
           throw Error('Unexpected character deletion response');
         const result = characterDeleteResult(body),
