@@ -21,7 +21,7 @@
 - The bridge currently accepts auth/world routes on the same machine. Public-server compatibility is not guaranteed.
 - Session stability, retry behavior, and server-specific protocol behavior need further work.
 - Character creation is under development; the presence of a preview does not establish successful creation on every server.
-- Entering the world and in-game gameplay are not implemented.
+- Initial outdoor world entry is available. General in-game gameplay is not implemented.
 
 ## Build and data
 
@@ -33,10 +33,14 @@
 
 - Resource-load failures show a Retry/Cancel dialog while preserving the world connection. They are reported separately from transport/server disconnections; manual recovery validation is still pending.
 
-- The new world-entry path needs manual client validation. Compilation and owner-asset decoding do not prove a successful live entry or native visual equivalence.
-- The initial outdoor scene supports terrain, static WMO groups and nearby static M2 decoration. Water, sky assets, animated decoration, WMO doodad sets, native world lighting, complete material permutations and indoor visibility are incomplete.
+- World entry has been exercised manually. The latest streaming, introduction and frame-presentation changes still need manual comparison; compilation and resource decoding do not establish native visual equivalence.
+- Outdoor scenes admit terrain, WMO exterior groups, their selected/default decoration sets and referenced M2 props. Particle/UV-driven props use the C/WASM model and particle pipeline. Water, portal-based indoor traversal, complete material permutations and native world-light blending remain incomplete.
+- Sky color bands and time selection come from owner Light tables and server time. Cloud projection is reconstructed; full regional skyboxes, celestial bodies and exact native sky pixels remain unfinished.
+- Repeated effect models share a simulation in local space and receive per-instance camera transforms. Independent native RNG/phase per emitter instance is not reconstructed.
 - Ground movement uses loaded terrain heights. Building/object collision, gravity, jumping, swimming, transports and camera collision are not implemented. Stay outdoors near the starting location.
 - The player can use stand/run poses, but animation blending, backward/strafe-specific poses and authoritative object-update reconciliation remain incomplete.
 - Server object-update packets are received but their entities are not reconstructed yet. NPCs, other players, combat, quests and the in-game HUD are not available.
 - Introduction cameras and narration use the current client's CinematicSequences, CinematicCamera and SoundEntries data. Escape confirmation currently reuses the C/Lua glue dialog; the complete in-game cinematic frame and letterboxing are not reconstructed yet.
-- Outdoor streaming keeps a 3x3 terrain neighborhood, a bounded ground cache and up to 96 distinct structure/decoration assets. This is an initial-zone implementation, not unrestricted world traversal.
+- Outdoor streaming keeps a 3x3 terrain neighborhood, a bounded ground cache and up to 256 distinct structure/decoration assets. This is an initial-zone implementation, not unrestricted world traversal.
+
+- Character deletion uses the original typed confirmation and server result. Live deletion/error-flow validation remains manual; no character is removed optimistically or automatically retried.

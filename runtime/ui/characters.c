@@ -35,7 +35,8 @@ struct BwCharacters {
   uint32_t section_count, facial_count;
   Character rows[50];
   uint32_t count, connected, selected, race, class_index, gender, appearance[5];
-  uint32_t revision, actions, creating, random;
+  uint32_t revision, actions, creating, random, delete_index;
+  uint32_t delete_guid[2];
   double facing[2];
   char create_name[49];
   uint8_t create_fields[9];
@@ -586,11 +587,40 @@ static int call(lua_State *L) {
         }
       }
   }
+  if (op == 35) {
+    if (!s->connected || !s->selected || s->selected > s->count)
+      return luaL_error(L, "Select a character before deleting it");
+    s->delete_index = s->selected;
+    memcpy(s->delete_guid, s->rows[s->selected - 1].guid, sizeof(s->delete_guid));
+    if (luaL_dostring(L, "CharacterDeleteEditBox:SetText(\"\");CharacterDeleteDialog:Show();"
+                         "CharacterDeleteEditBox:SetFocus()"))
+      return lua_error(L);
+    return 0;
+  }
+  if (op == 36) {
+    uint32_t index = (uint32_t)luaL_checkinteger(L, 1);
+    if (!s->connected || !index || index > s->count || s->creating || index != s->delete_index ||
+        memcmp(s->delete_guid, s->rows[index - 1].guid, sizeof(s->delete_guid)))
+      return luaL_error(L, "Character deletion is unavailable");
+    s->delete_index = index;
+    s->actions |= 64;
+    return 0;
+  }
   return luaL_error(L, "unsupported character operation");
 }
 uint32_t bw_characters_register(BwCharacters *s) {
   if (!s)
     return 1;
+  /* The original deletion confirmation uses the native string alias. */
+  lua_getglobal(s->L, "strupper");
+  int needs_upper = lua_isnil(s->L, -1);
+  lua_pop(s->L, 1);
+  if (needs_upper) {
+    lua_getglobal(s->L, "string");
+    lua_getfield(s->L, -1, "upper");
+    lua_setglobal(s->L, "strupper");
+    lua_pop(s->L, 1);
+  }
   const char *names[] = {"GetCharacterInfo",
                          "IsConnectedToServer",
                          "SelectCharacter",
@@ -625,7 +655,9 @@ uint32_t bw_characters_register(BwCharacters *s) {
                          "UpdateSelectionCustomizationScene",
                          "UpdateCustomizationScene",
                          "CreateCharacter",
-                         "GetRandomName"};
+                         "GetRandomName",
+                         "CharacterSelect_Delete",
+                         "DeleteCharacter"};
   for (uint32_t i = 0; i < sizeof(names) / sizeof(*names); i++) {
     lua_rawgeti(s->L, LUA_REGISTRYINDEX, s->reference);
     lua_pushinteger(s->L, i);
@@ -660,6 +692,10 @@ uint32_t bw_characters_metric(const BwCharacters *s, uint32_t field) {
   if (field == 14)
     return s->class_index && s->class_index <= s->class_count ? s->classes[s->class_index - 1].id
                                                               : 0;
+  if (field == 15)
+    return s->delete_index;
+  if (field == 16 || field == 17)
+    return s->delete_guid[field - 16];
   return 0;
 }
 uint32_t bw_characters_actions(BwCharacters *s) {

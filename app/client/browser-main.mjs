@@ -275,6 +275,9 @@ const launch = (event) => {
           isCurrent: () => generation === worldGeneration,
           send: (action) => window.uiInput({ kind: 14, ...action }),
           onIssue: (message) => console.warn('World: ' + message),
+          onProgress: (progress) => {
+            window.worldStatus = { ...progress, started: performance.now() };
+          },
         });
         if (generation !== worldGeneration) {
           client.dispose();
@@ -663,7 +666,7 @@ const launch = (event) => {
           ? async (requests, volumes, packet) => {
               if (packet) {
                 await prepareUI(packet);
-                uiRenderer.draw();
+                if (!window.uiInputState?.world_entry) uiRenderer.draw();
                 if (!playbackStarted) playbackStarted = performance.now();
               }
               return audio.drain(requests, volumes);
@@ -771,11 +774,13 @@ const launch = (event) => {
               passPolicy: 'baseline',
               measurePixels: false,
             });
-          state.ui_draw = state.movie_active
-            ? null
-            : action.kind === 10
-              ? { drawn_quads: uiRenderer.commandCount, issues: uiRenderer.issues }
-              : uiRenderer.draw();
+          state.ui_draw = state.world_entry
+            ? { drawn_quads: uiRenderer.commandCount, issues: uiRenderer.issues }
+            : state.movie_active
+              ? null
+              : action.kind === 10
+                ? { drawn_quads: uiRenderer.commandCount, issues: uiRenderer.issues }
+                : uiRenderer.draw();
           state.ui_asset_issues = uiAssets.issues;
           if (state.accepted_mask !== acceptedMask) {
             if ((state.accepted_mask | acceptedMask) !== state.accepted_mask)

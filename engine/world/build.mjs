@@ -2,6 +2,22 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { runClang } from '../../tools/compiler.mjs';
 const source = await readFile(new URL('../../runtime/world/world.c', import.meta.url));
 const exports = [
+  'world_decor_sources',
+  'world_group_decor',
+  'world_environment_load',
+  'world_environment',
+  'world_sky_values',
+  'world_sky_id',
+  'world_parent',
+  'world_wmo_decor',
+  'world_decor_names',
+  'world_decor_matrices',
+  'world_decor_ids',
+  'world_cull_decor',
+  'world_decor_visibility',
+  'world_object_sets',
+  'world_object_visibility',
+  'world_cull_objects',
   'world_exterior_groups',
   'world_cull',
   'world_visibility',

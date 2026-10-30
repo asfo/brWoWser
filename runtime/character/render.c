@@ -313,3 +313,26 @@ uint32_t character_skin_blend(uint32_t region) {
     }
   return 0;
 }
+
+/* Compose a world instance with a camera without moving shared particle state
+ * out of model space. Multiple instances can reuse one local simulation. */
+static float instance_matrix_input[32], instance_matrix_output[16];
+uint32_t character_instance_input(void) {
+  return (uint32_t)(uintptr_t)instance_matrix_input;
+}
+uint32_t character_instance_output(void) {
+  return (uint32_t)(uintptr_t)instance_matrix_output;
+}
+uint32_t character_instance_matrix(void) {
+  for (uint32_t i = 0; i < 32; i++)
+    if (!isfinite(instance_matrix_input[i]))
+      return 1;
+  for (uint32_t c = 0; c < 4; c++)
+    for (uint32_t r = 0; r < 4; r++) {
+      float v = 0;
+      for (uint32_t k = 0; k < 4; k++)
+        v += instance_matrix_input[k * 4 + r] * instance_matrix_input[16 + c * 4 + k];
+      instance_matrix_output[c * 4 + r] = v;
+    }
+  return 0;
+}

@@ -164,23 +164,39 @@ export async function loadCharacterModel({
   prepareWasm,
   backgroundPath,
   attachmentSpec,
+  worldPropPath,
   isCurrent = () => true,
   onIssue = () => {},
 }) {
   const checkpoint = () => {
     if (!isCurrent()) throw Error('Character load superseded');
   };
-  const metadata = attachmentSpec
-    ? { ...attachmentSpec, isAttachment: true, equipment: [], attachments: [], geosets: new Map() }
-    : backgroundPath
+  const metadata = worldPropPath
+    ? {
+        modelPath: worldPropPath,
+        skinPath: worldPropPath.replace(/\.m2$/i, '00.skin'),
+        isWorldProp: true,
+        equipment: [],
+        attachments: [],
+        geosets: new Map(),
+      }
+    : attachmentSpec
       ? {
-          modelPath: backgroundPath,
-          skinPath: backgroundPath.replace(/\.m2$/i, '00.skin'),
-          geosets: new Map(),
+          ...attachmentSpec,
+          isAttachment: true,
           equipment: [],
-          isBackground: true,
+          attachments: [],
+          geosets: new Map(),
         }
-      : await catalog.resolve(appearance);
+      : backgroundPath
+        ? {
+            modelPath: backgroundPath,
+            skinPath: backgroundPath.replace(/\.m2$/i, '00.skin'),
+            geosets: new Map(),
+            equipment: [],
+            isBackground: true,
+          }
+        : await catalog.resolve(appearance);
   checkpoint();
   const [source, skinBytes] = await Promise.all([
     readAsset(metadata.modelPath),
@@ -217,7 +233,7 @@ export async function loadCharacterModel({
     count: rawRanges[i * 4 + 3],
   }));
   function visible(id) {
-    if (metadata.isBackground || metadata.isAttachment) return true;
+    if (metadata.isBackground || metadata.isAttachment || metadata.isWorldProp) return true;
     if (id === 0) return true;
     if (id < 100) return id === metadata.hairGeoset || (id === 1 && metadata.bald);
     const group = Math.floor(id / 100),
@@ -249,9 +265,11 @@ export async function loadCharacterModel({
     if (visible(ranges[subset].geoset))
       for (let j = 0; j < count; j++) used.add(m.view.getUint16(lookupAt + (start + j) * 2, true));
   }
-  const emitterCount = metadata.isBackground ? m.view.getUint32(0x128, true) : 0;
-  const lightCount = metadata.isBackground ? m.view.getUint32(0x108, true) : 0,
-    lightOffset = metadata.isBackground ? m.view.getUint32(0x10c, true) : 0;
+  const emitterCount =
+    metadata.isBackground || metadata.isWorldProp ? m.view.getUint32(0x128, true) : 0;
+  const lightCount =
+      metadata.isBackground || metadata.isWorldProp ? m.view.getUint32(0x108, true) : 0,
+    lightOffset = metadata.isBackground || metadata.isWorldProp ? m.view.getUint32(0x10c, true) : 0;
   if (lightCount > 64) throw Error('Character background light capacity');
   m.span(lightOffset, lightCount, 156);
   const hasPointLights = Array.from({ length: lightCount }, (_, i) =>
@@ -277,7 +295,7 @@ export async function loadCharacterModel({
   if (metadata.isAttachment) {
     if (requiredKinds.has(2) && metadata.texture)
       replacements.set(2, await decodeTexture(metadata.texture));
-  } else if (!metadata.isBackground) {
+  } else if (!metadata.isBackground && !metadata.isWorldProp) {
     replacements.set(
       1,
       await composeCharacterSkin(
@@ -365,7 +383,7 @@ export async function loadCharacterModel({
     camera = Array.from(new Float32Array(decoder.memory.buffer, decoder.values_ptr(), 10));
   }
   let uvAnimation = null;
-  if (metadata.isBackground && modules.uv) {
+  if ((metadata.isBackground || metadata.isWorldProp) && modules.uv) {
     try {
       const runtime = await createUVTranslationRuntime(modules.uv, model);
       if (runtime.sampleScroll(0)) uvAnimation = runtime;
@@ -413,6 +431,7 @@ export async function loadCharacterModel({
     }
   }
   let cachedTime = -1,
+    cachedView,
     cachedPose;
   let runPose,
     runDuration = 0,
@@ -434,7 +453,7 @@ export async function loadCharacterModel({
   }
   function samplePose(elapsedMs, view) {
     const ms = Math.floor(elapsedMs);
-    if (ms !== cachedTime) {
+    if (ms !== cachedTime || (view && (!cachedView || view.some((v, i) => v !== cachedView[i])))) {
       const runtime = moving && runPose ? runPose : pose;
       const clock = moving && runPose ? runDuration : duration;
       cachedPose = runtime?.sample(clock ? ms % clock : 0, ms, view);
@@ -445,10 +464,24 @@ export async function loadCharacterModel({
             cachedPose.normals?.set(normals.subarray(i * 3, i * 3 + 3), i * 3);
           }
       cachedTime = ms;
+      cachedView = view?.slice();
     }
     return cachedPose;
   }
   return {
+    localView(view, placement) {
+      if (!metadata.isWorldProp) return view;
+      new Float32Array(prepare.memory.buffer, prepare.character_instance_input(), 32).set([
+        ...view,
+        ...placement,
+      ]);
+      if (prepare.character_instance_matrix()) throw Error('World instance view rejected');
+      return new Float32Array(
+        prepare.memory.buffer,
+        prepare.character_instance_output(),
+        16,
+      ).slice();
+    },
     motion(value) {
       if (moving !== !!value) {
         moving = !!value;

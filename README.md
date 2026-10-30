@@ -37,18 +37,20 @@ Client settings and accepted notices normally persist in browser storage. Origin
 - Original login interface, notices, options/credits screens, keyboard and pointer input, software cursor, and configuration persistence.
 - Canvas cinematic presentation, music, ambience, and selected sound effects.
 - Animated login and character background scenes, player models, customization, starting clothes, and held-item attachment rendering.
-- Authentication, realm listing/selection, character roster handling, and the character creation flow under development.
+- Authentication, realm listing/selection, character roster handling, creation previews and server-confirmed character deletion.
 - A local WebSocket-to-TCP bridge and client-side server-protocol handling.
 
 These are implementation milestones, not a claim of complete native equivalence. See [current status](docs/STATUS.md), [known issues](docs/KNOWN_ISSUES.md), and the [TODO list](docs/TODO.md).
 
 ## Initial outdoor world preview
 
-Use a newly created Human character on your local server and click **Enter World**. The server decides whether its first-login introduction should run. Terrain, outdoor WMO groups, nearby static decoration and the player model load from your client files.
+Use a newly created Human character on your local server and click **Enter World**. The server decides whether its first-login introduction should run. Terrain, outdoor WMO groups, their decoration sets, particle-driven props and the player model load from your client files. Sky color bands are read from the client Light tables; the server supplies game time.
 
 - **Escape** during the introduction opens a confirmation to skip it.
 - **W/S** move forward/backward; **A/D** turn; **Q/E** strafe.
 - Hold the **right mouse button** to orbit the camera; use the **wheel** to zoom.
+
+Character deletion uses the original confirmation dialog: type the displayed confirmation word and confirm. The roster changes only after server confirmation.
 
 Stay outdoors near the starting area. Building collision, jumping/swimming, NPC reconstruction, the in-game HUD, combat and quests are still pending. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
 

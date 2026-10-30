@@ -3,6 +3,7 @@ import { WORLD, characterGuid, worldLocation, movementPacket } from './world_ent
 import {
   encodeCharacterCreate,
   characterCreateResult,
+  characterDeleteResult,
   createCharacterRoster,
 } from './character_protocol.mjs';
 
@@ -14,6 +15,8 @@ const OPCODE = {
   charEnum: 0x3b,
   charCreateRequest: 0x36,
   charCreate: 0x3a,
+  charDeleteRequest: 0x38,
+  charDelete: 0x3c,
   ping: 0x1dc,
   warden: 0x2e6,
   wardenResponse: 0x2e7,
@@ -69,6 +72,7 @@ export function connectWorldSession({
     let roster,
       rosterRequest = null,
       creationRequest = null,
+      deletionRequest = null,
       entryRequest = null,
       worldEntry = null;
     let timer = setTimeout(() => close(Error('World authentication timeout')), 20000);
@@ -83,12 +87,12 @@ export function connectWorldSession({
       clearTimeout(timer);
       clearInterval(heartbeat);
       clearInterval(wardenTicker);
-      for (const job of [rosterRequest, creationRequest, entryRequest]) {
+      for (const job of [rosterRequest, creationRequest, deletionRequest, entryRequest]) {
         if (!job) continue;
         clearTimeout(job.timer);
         job.reject(error);
       }
-      rosterRequest = creationRequest = null;
+      rosterRequest = creationRequest = deletionRequest = null;
       entryRequest = null;
       worldEntry = null;
       signal?.removeEventListener('abort', abort);
@@ -193,12 +197,18 @@ export function connectWorldSession({
         enterWorld() {
           if (closed) return Promise.reject(closeError);
           if (entryRequest) return entryRequest.promise;
-          if (worldEntry || creationRequest || rosterRequest || !roster.selected)
+          if (worldEntry || creationRequest || deletionRequest || rosterRequest || !roster.selected)
             return Promise.reject(Error('Character is not ready to enter the world'));
           const job = {};
           job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
           entryRequest = job;
-          worldEntry = { phase: 'entering', character: roster.selected, cinematic: 0, updates: 0 };
+          worldEntry = {
+            phase: 'entering',
+            character: roster.selected,
+            cinematic: 0,
+            updates: 0,
+            entryStarted: performance.now(),
+          };
           job.timer = setTimeout(() => close(Error('World entry response timeout')), 30000);
           try {
             send(WORLD.login, characterGuid(roster.selected.guid));
@@ -248,7 +258,7 @@ export function connectWorldSession({
         },
         refreshCharacters() {
           if (closed) return Promise.reject(closeError);
-          if (creationRequest || worldEntry)
+          if (creationRequest || deletionRequest || worldEntry)
             return Promise.reject(Error('Character creation is already pending'));
           if (rosterRequest) return rosterRequest.promise;
           const job = {};
@@ -264,7 +274,7 @@ export function connectWorldSession({
         },
         createCharacter(character) {
           if (closed) return Promise.reject(closeError);
-          if (creationRequest || rosterRequest || worldEntry)
+          if (creationRequest || deletionRequest || rosterRequest || worldEntry)
             return Promise.reject(Error('A character operation is already pending'));
           let bytes;
           try {
@@ -283,6 +293,24 @@ export function connectWorldSession({
             close(error);
           } finally {
             bytes.fill(0);
+          }
+          return job.promise;
+        },
+        deleteCharacter(guid) {
+          if (closed) return Promise.reject(closeError);
+          if (worldEntry || rosterRequest || creationRequest || deletionRequest)
+            return Promise.reject(Error('A character operation is already pending'));
+          if (!roster.rows.some((row) => row.guid[0] === guid?.[0] && row.guid[1] === guid?.[1]))
+            return Promise.reject(Error('Character is not in this roster'));
+          const job = {};
+          job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
+          deletionRequest = job;
+          // An uncertain mutation is never retried automatically.
+          job.timer = setTimeout(() => close(Error('Character deletion response timeout')), 20000);
+          try {
+            send(OPCODE.charDeleteRequest, characterGuid(guid));
+          } catch (error) {
+            close(error);
           }
           return job.promise;
         },
@@ -368,6 +396,17 @@ export function connectWorldSession({
       return false;
     }
     function packet(opcode, body) {
+      if (opcode === WORLD.gameTime) {
+        if (!worldEntry || body.length !== 12) throw Error('Invalid world game-time packet');
+        const view = new DataView(body.buffer, body.byteOffset, body.length),
+          packed = view.getUint32(0, true);
+        worldEntry = {
+          ...worldEntry,
+          gameTime: ((packed >>> 6) & 31) * 60 + (packed & 63),
+          timeReceived: performance.timeOrigin + performance.now(),
+        };
+        return;
+      }
       if (opcode === WORLD.timeSync) {
         if (!authed || body.length !== 4) throw Error('Invalid world time synchronization');
         const reply = new Uint8Array(8);
@@ -379,7 +418,12 @@ export function connectWorldSession({
       if (opcode === WORLD.verify) {
         if (!entryRequest || !worldEntry) throw Error('Unexpected world entry location');
         const location = worldLocation(body);
-        worldEntry = { ...worldEntry, phase: 'loading', location };
+        worldEntry = {
+          ...worldEntry,
+          phase: 'loading',
+          location,
+          networkMs: Math.round(performance.now() - worldEntry.entryStarted),
+        };
         const job = entryRequest;
         entryRequest = null;
         clearTimeout(job.timer);
@@ -473,6 +517,16 @@ export function connectWorldSession({
         const result = characterCreateResult(body);
         const job = creationRequest;
         creationRequest = null;
+        clearTimeout(job.timer);
+        job.resolve(result);
+        return;
+      }
+      if (opcode === OPCODE.charDelete) {
+        if (!authed || !ready || !deletionRequest)
+          throw Error('Unexpected character deletion response');
+        const result = characterDeleteResult(body),
+          job = deletionRequest;
+        deletionRequest = null;
         clearTimeout(job.timer);
         job.resolve(result);
         return;

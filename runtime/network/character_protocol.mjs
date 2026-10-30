@@ -84,6 +84,22 @@ export function characterCreateResult(bytes) {
     token: createResults[code - 0x2f] || nameResults[code - 0x57] || 'CHAR_CREATE_ERROR',
   });
 }
+export function characterDeleteResult(bytes) {
+  if (bytes.length !== 1) throw Error('Invalid character deletion response');
+  const code = bytes[0];
+  return Object.freeze({
+    code,
+    success: code === 0x47,
+    token:
+      {
+        0x47: 'CHAR_DELETE_SUCCESS',
+        0x48: 'CHAR_DELETE_FAILED',
+        0x49: 'CHAR_DELETE_FAILED_LOCKED_FOR_TRANSFER',
+        0x4a: 'CHAR_DELETE_FAILED_GUILD_LEADER',
+        0x4b: 'CHAR_DELETE_FAILED_ARENA_CAPTAIN',
+      }[code] || 'CHAR_DELETE_FAILED',
+  });
+}
 
 // Selection uses the complete GUID, never a roster index carried across refreshes.
 export function createCharacterRoster(initial) {

@@ -738,6 +738,17 @@ listen(async (config) => {
                   'CharacterSelect:Hide();StopGlueMusic();StopGlueAmbience();GlueDialog_Show("BRWOWSER_WORLD_LOADING")',
                 );
                 if (reply.status) throw Error(reply.error);
+              } else if (job.kind === 'delete') {
+                if (job.result.success) {
+                  beginCharacterJob('deleted-roster', worldSession.refreshCharacters());
+                } else {
+                  const reply = lua.run(
+                    'GlueDialog:Hide();GlueDialog_Show("OKAY",_G[' +
+                      JSON.stringify(job.result.token) +
+                      '] or CHAR_DELETE_FAILED)',
+                  );
+                  if (reply.status) throw Error(reply.error);
+                }
               } else if (job.kind === 'create') {
                 if (job.result.success) {
                   beginCharacterJob('created-roster', worldSession.refreshCharacters(), {
@@ -768,13 +779,17 @@ listen(async (config) => {
                   if (created) createdIndex = created.index + 1;
                 }
                 const reply = lua.run(
-                  job.kind === 'created-roster'
-                    ? 'GlueDialog:Hide();SetGlueScreen("charselect");CharacterSelect.selectLast=0;' +
+                  job.kind === 'deleted-roster'
+                    ? 'GlueDialog:Hide();CharacterSelect.selectedIndex=math.min(CharacterSelect.selectedIndex or 1,' +
+                        job.result.length +
+                        ');UpdateCharacterList()'
+                    : job.kind === 'created-roster'
+                      ? 'GlueDialog:Hide();SetGlueScreen("charselect");CharacterSelect.selectLast=0;' +
                         (createdIndex
                           ? 'CharacterSelect.selectedIndex=' + createdIndex + ';'
                           : '') +
                         'UpdateCharacterList()'
-                    : 'UpdateCharacterList()',
+                      : 'UpdateCharacterList()',
                 );
                 if (reply.status) throw Error(reply.error);
               }
@@ -812,6 +827,11 @@ listen(async (config) => {
               );
               if (reply.status) throw Error(reply.error);
               beginCharacterJob('enter', worldSession.enterWorld());
+            } else if (!characterJob && actions & 64) {
+              const guid = [e.glue_character_metric(16), e.glue_character_metric(17)];
+              const reply = lua.run('GlueDialog_Show("CANCEL",CHAR_DELETE_IN_PROGRESS)');
+              if (reply.status) throw Error(reply.error);
+              beginCharacterJob('delete', worldSession.deleteCharacter(guid));
             } else if (!characterJob && actions & 16) {
               const character = readCharacterCreate(api);
               const reply = lua.run('GlueDialog_Show("CANCEL",CHAR_CREATE_IN_PROGRESS)');

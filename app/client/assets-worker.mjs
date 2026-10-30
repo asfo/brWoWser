@@ -1,6 +1,7 @@
 import { readLocalSource } from '../../runtime/io/local_source.mjs';
 import { makePlanner } from '../../engine/archive-startup/planner.mjs';
 import { openArchive } from '../../runtime/io/member_reader.mjs';
+import { createRangeCache } from '../../runtime/io/range_cache.mjs';
 let archives, ordered, lookupWasm, decoderWasm, blp, files;
 let world;
 async function worldOperation(data) {
@@ -38,6 +39,7 @@ async function worldOperation(data) {
       return {
         id: words(world.world_object_ids(), count)[i],
         kind: words(world.world_object_kinds(), count)[i] ? 'm2' : 'wmo',
+        doodadSet: words(world.world_object_sets(), count)[i],
         path: new TextDecoder().decode(pathBytes.subarray(0, pathBytes.indexOf(0))),
         placement: floats(world.world_object_matrices() + i * 64, 16).slice(),
       };
@@ -56,11 +58,12 @@ async function worldOperation(data) {
     if (error) throw Error(`Static world model rejected (${error}): ${data.path}`);
     error = world.world_static_skin(await load(data.path.replace(/\.m2$/i, '00.skin')));
     if (error) throw Error(`Static world skin rejected (${error}): ${data.path}`);
-    const info = words(world.world_meta(), 4).slice();
+    const info = words(world.world_meta(), 6).slice();
     return {
       vertices: floats(world.world_vertices(), info[0] * 11).slice(),
       indices: words(world.world_indices(), info[1]).slice(),
       batches: words(world.world_chunks(), info[2] * 8).slice(),
+      effects: { emitters: info[4], uv: info[5] },
       materials: Array.from({ length: info[3] }, (_, i) => {
         const name = new Uint8Array(
           world.memory.buffer,
@@ -96,11 +99,36 @@ async function worldOperation(data) {
   if (data.operation === 'wmo-group') {
     const error = world.world_wmo_group(await load(data.path));
     if (error) throw Error(`World structure geometry rejected (${error}): ${data.path}`);
-    const info = words(world.world_meta(), 3).slice();
+    const info = words(world.world_meta(), 4).slice();
     return {
       vertices: floats(world.world_vertices(), info[0] * 11).slice(),
       indices: words(world.world_indices(), info[1]).slice(),
       batches: words(world.world_chunks(), info[2] * 8).slice(),
+      doodadRefs: words(world.world_group_decor(), info[3]).slice(),
+    };
+  }
+  if (data.operation === 'wmo-decor') {
+    if (
+      !(data.placement instanceof Float32Array) ||
+      data.placement.length !== 16 ||
+      !data.placement.every(Number.isFinite)
+    )
+      throw Error('Invalid world structure placement');
+    floats(world.world_parent(), 16).set(data.placement);
+    const error = world.world_wmo_decor(await load(data.path), data.doodadSet || 0);
+    if (error) throw Error(`World structure decoration rejected (${error}): ${data.path}`);
+    const count = words(world.world_meta(), 1)[0];
+    return {
+      children: Array.from({ length: count }, (_, i) => {
+        const name = new Uint8Array(world.memory.buffer, world.world_decor_names() + i * 256, 256);
+        return {
+          path: new TextDecoder().decode(name.subarray(0, name.indexOf(0))),
+          kind: 'm2',
+          decorId: words(world.world_decor_ids(), count)[i],
+          sourceIndex: words(world.world_decor_sources(), count)[i],
+          placement: floats(world.world_decor_matrices() + i * 64, 16).slice(),
+        };
+      }),
     };
   }
   if (data.operation === 'spawn') {
@@ -112,6 +140,17 @@ async function worldOperation(data) {
       throw Error('Invalid world spawn');
     floats(world.world_controls(), 4).set(data.position);
     if (world.world_spawn()) throw Error('World spawn rejected');
+    return {};
+  }
+  if (data.operation === 'environment') {
+    const names = ['Light', 'LightParams', 'LightIntBand'];
+    for (let i = 0; i < names.length; i++) {
+      const error = world.world_environment_load(
+        i,
+        await load('DBFilesClient\\' + names[i] + '.dbc'),
+      );
+      if (error) throw Error(`World environment table rejected (${error}): ${names[i]}`);
+    }
     return {};
   }
   if (data.operation === 'cinematic') {
@@ -149,6 +188,9 @@ async function worldOperation(data) {
     if (world.world_view(data.aspect)) throw Error('World view rejected');
     world.world_frame_meta();
     world.world_cull();
+    world.world_cull_objects();
+    world.world_cull_decor();
+    const skyStatus = world.world_environment(data.map, data.time, data.globalMs);
     return {
       player: floats(world.world_player(), 8).slice(),
       camera: floats(world.world_camera(), 10).slice(),
@@ -156,6 +198,10 @@ async function worldOperation(data) {
       placement: floats(world.world_placement(), 16).slice(),
       tiles: words(world.world_meta(), 4).slice(),
       visibility: words(world.world_visibility(), 160).slice(),
+      objectVisibility: words(world.world_object_visibility(), 2080).slice(),
+      decorVisibility: words(world.world_decor_visibility(), 1024).slice(),
+      sky: skyStatus ? null : floats(world.world_sky_values(), 58).slice(),
+      skybox: skyStatus ? 0 : world.world_sky_id(),
     };
   }
   throw Error('Unsupported world asset operation');
@@ -177,7 +223,9 @@ async function bytes(path) {
       if (!f) throw Error('missing archive ' + m.path);
       a = await openArchive({
         size: f.size ?? f.file?.size,
-        read: (o, n) => readLocalSource(f, o, n),
+        read: createRangeCache((o, n) => readLocalSource(f, o, n), f.size ?? f.file?.size, {
+          budget: 4 * 1024 * 1024,
+        }),
         lookupWasm,
         decoderWasm,
       });
@@ -223,9 +271,18 @@ async function init(data) {
   blp = (await WebAssembly.instantiate(data.blpWasm, {})).instance.exports;
   return { mounts: ordered.length };
 }
-let queue = Promise.resolve();
+const jobs = [];
+let draining = false;
 self.onmessage = ({ data }) => {
-  queue = queue.then(async () => {
+  if (data.kind === 'world' && data.operation === 'sample') jobs.unshift(data);
+  else jobs.push(data);
+  drain();
+};
+async function drain() {
+  if (draining) return;
+  draining = true;
+  while (jobs.length) {
+    const data = jobs.shift();
     try {
       let result;
       if (data.kind === 'init') result = await init(data);
@@ -250,9 +307,13 @@ self.onmessage = ({ data }) => {
       for (const value of Object.values(result))
         if (ArrayBuffer.isView(value)) transfer.push(value.buffer);
       // The byte cache owns its buffers; transfer only newly generated arrays.
-      self.postMessage({ id: data.id, result }, data.kind === 'world' ? transfer : []);
+      self.postMessage(
+        { id: data.id, result },
+        data.kind === 'world' || data.kind === 'texture' ? transfer : [],
+      );
     } catch (e) {
       self.postMessage({ id: data.id, error: e.message });
     }
-  });
-};
+  }
+  draining = false;
+}

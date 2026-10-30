@@ -19,7 +19,7 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 - [ ] Finish weapon alignment, hand grip, and shield placement across races and sexes.
 - [ ] Complete clothing geosets, shoulder/head attachments, and remaining equipment visuals.
 - [ ] Confirm customization, randomization, rotation, and selected button states remain consistent.
-- [ ] Complete create-character submission, error display, refresh, and selection of the created character.
+- [ ] Complete manual review of create/delete submission, server errors, roster refresh and selected-character behavior.
 - [ ] Verify retry/reconnect paths recover cleanly after a failed action or server disconnect.
 - [ ] Finish options/credits layout, transitions, and performance review.
 
@@ -35,7 +35,7 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 - [ ] Manually validate the new selected-character world-entry path and retry/disconnect recovery.
 - [ ] Manually validate initial outdoor terrain, WMO/static decoration and character placement; finish water, sky, lighting, collision and animated scenery.
 - [ ] Validate initial ground movement/camera controls; implement authoritative world objects, reconciliation, collision, gravity, jumping, swimming and transports.
-- [ ] Validate original race-introduction playback, narration, Escape confirmation and completion against the native client.
+- [ ] Compare race introductions, sky/cloud rendering, WMO decoration, particles, narration and skip-to-player handoff against the native client.
 - [ ] In-game UI, objects/NPCs, interaction, inventory, spells, and quests.
 - [ ] Streaming, resource budgets, and performance work for large scenes.
 

@@ -9,6 +9,8 @@
 #define CELLS 256
 #define VERTS 145
 #define TILE_CACHE 16
+#define OBJECTS 4096
+#define OBJECT_WORDS (OBJECTS / 32)
 #define TILE_SIZE (1600.0f / 3.0f)
 #define CELL_SIZE (100.0f / 3.0f)
 static uint8_t input[CAP], alpha[CELLS * 64 * 64 * 4];
@@ -18,12 +20,15 @@ static float controls[16], player[8], camera[10], origin[4];
 static uint32_t camera_length, camera_duration;
 static uint8_t camera_bytes[2 * 1024 * 1024];
 typedef struct {
-  float x, y, heights[CELLS * VERTS];
+  float x, y, heights[CELLS * VERTS], chunk_bounds[CELLS][4];
   uint16_t holes[CELLS];
   int used;
+  uint32_t object_count;
+  float objects[OBJECTS][4];
+  uint32_t kinds[OBJECTS];
 } GroundTile;
 static GroundTile ground[TILE_CACHE];
-static uint32_t tile_next;
+static uint32_t tile_next, current_tile;
 uint32_t world_input(void) {
   return (uint32_t)(uintptr_t)input;
 }
@@ -123,7 +128,9 @@ uint32_t world_terrain(uint32_t length, uint32_t big_alpha) {
   if (length > CAP || length < 20 || u32(input, 0) != TAG('M', 'V', 'E', 'R') ||
       u32(input, 8) != 18)
     return 1;
-  GroundTile *tile = &ground[tile_next++ % TILE_CACHE];
+  current_tile = tile_next++ % TILE_CACHE;
+  GroundTile *tile = &ground[current_tile];
+  tile->object_count = 0;
   tile->used = 0;
   memset(tile->heights, 0, sizeof(tile->heights));
   memset(tile->holes, 0, sizeof(tile->holes));
@@ -193,6 +200,17 @@ uint32_t world_terrain(uint32_t length, uint32_t big_alpha) {
           p[10] = input[colors + 8 + v * 4] / 127.0f;
         }
       }
+    float *bound = tile->chunk_bounds[cell];
+    bound[0] = x - CELL_SIZE * .5f;
+    bound[1] = y - CELL_SIZE * .5f;
+    float low = tile->heights[cell * VERTS], high = low;
+    for (uint32_t j = 1; j < VERTS; j++) {
+      float h = tile->heights[cell * VERTS + j];
+      low = fminf(low, h);
+      high = fmaxf(high, h);
+    }
+    bound[2] = (low + high) * .5f;
+    bound[3] = sqrtf(CELL_SIZE * CELL_SIZE * .5f + (high - low) * (high - low) * .25f);
     uint32_t *info = chunks + count * 8;
     info[0] = total_indices;
     info[2] = layers;
@@ -522,11 +540,15 @@ void world_frame_meta(void) {
 
 /* Static world structures. Coordinate conversion matches the map's Y-up
  * instance records, while model vertices and simulation remain Z-up. */
-static char object_names[512][256], material_names[256][256];
-static float object_matrices[512][16];
-static uint32_t object_ids[512], object_kinds[512], material_modes[256], exterior_groups[512];
+static char object_names[OBJECTS][256], material_names[256][256];
+static float object_matrices[OBJECTS][16];
+static uint32_t object_ids[OBJECTS], object_kinds[OBJECTS], object_sets[OBJECTS],
+    material_modes[256], exterior_groups[512];
 uint32_t world_exterior_groups(void) {
   return (uint32_t)(uintptr_t)exterior_groups;
+}
+uint32_t world_object_sets(void) {
+  return (uint32_t)(uintptr_t)object_sets;
 }
 uint32_t world_object_kinds(void) {
   return (uint32_t)(uintptr_t)object_kinds;
@@ -576,19 +598,15 @@ static uint32_t read_objects(uint32_t n, uint32_t kind) {
       return 3;
     float x = 32 * TILE_SIZE - f32(input, at + 16), y = 32 * TILE_SIZE - f32(input, at + 8),
           z = f32(input, at + 12);
-    /* Admit nearby structures; very large distant city groups would exhaust
-     * the first outdoor scene's memory budget before their streaming exists. */
-    float dx = x - camera[3], dy = y - camera[4];
-    if (dx * dx + dy * dy > (kind ? 220 * 220 : 650 * 650))
-      continue;
-    if (meta[0] >= 512)
-      break;
+    if (meta[0] >= OBJECTS)
+      return 4;
     uint32_t index = meta[0]++, off = u32(input, lookup + 8 + id * 4);
     if (off >= u32(input, names + 4) ||
         path_copy(object_names[index], names + 8 + off, names + 8 + u32(input, names + 4)))
       return 5;
     object_ids[index] = u32(input, at + 4);
     object_kinds[index] = kind;
+    object_sets[index] = kind ? 0 : input[at + 58] | (uint32_t)input[at + 59] << 8;
     float angles[3] = {f32(input, at + 20) * .01745329252f,
                        f32(input, at + 24) * .01745329252f + 3.141592654f,
                        f32(input, at + 28) * .01745329252f};
@@ -618,13 +636,35 @@ static uint32_t read_objects(uint32_t n, uint32_t kind) {
     for (uint32_t k = 0; k < 16; k++)
       if (!isfinite(m[k]))
         return 6;
+    float *bounds = ground[current_tile].objects[index];
+    bounds[0] = x;
+    bounds[1] = y;
+    bounds[2] = z;
+    bounds[3] = 40;
+    if (!kind) {
+      float minx = f32(input, at + 32), miny = f32(input, at + 36), minz = f32(input, at + 40),
+            maxx = f32(input, at + 44), maxy = f32(input, at + 48), maxz = f32(input, at + 52);
+      bounds[0] = 32 * TILE_SIZE - (minz + maxz) * .5f;
+      bounds[1] = 32 * TILE_SIZE - (minx + maxx) * .5f;
+      bounds[2] = (miny + maxy) * .5f;
+      bounds[3] = sqrtf((maxx - minx) * (maxx - minx) + (maxy - miny) * (maxy - miny) +
+                        (maxz - minz) * (maxz - minz)) *
+                  .5f;
+    }
+    for (uint32_t k = 0; k < 4; k++)
+      if (!isfinite(bounds[k]))
+        return 6;
+    ground[current_tile].kinds[index] = kind;
   }
   return 0;
 }
 uint32_t world_objects(uint32_t n) {
   meta[0] = 0;
   uint32_t r = read_objects(n, 0);
-  return r ? r : read_objects(n, 1);
+  if (!r)
+    r = read_objects(n, 1);
+  ground[current_tile].object_count = r ? 0 : meta[0];
+  return r;
 }
 uint32_t world_wmo_root(uint32_t n) {
   memset(meta, 0, sizeof(meta));
@@ -654,6 +694,10 @@ uint32_t world_wmo_root(uint32_t n) {
       exterior_groups[meta[2]++] = i;
   meta[1] = count;
   return 0;
+}
+static uint32_t group_decor[8192];
+uint32_t world_group_decor(void) {
+  return (uint32_t)(uintptr_t)group_decor;
 }
 uint32_t world_wmo_group(uint32_t n) {
   memset(meta, 0, sizeof(meta));
@@ -710,11 +754,20 @@ uint32_t world_wmo_group(uint32_t n) {
   meta[0] = vc;
   meta[1] = ic;
   meta[2] = bc;
+  uint32_t refs = find(input, end, start, TAG('M', 'O', 'D', 'R'));
+  if (refs) {
+    uint32_t count = u32(input, refs + 4) / 2;
+    if (count > 8192 || u32(input, refs + 4) % 2)
+      return 8;
+    for (uint32_t i = 0; i < count; i++)
+      group_decor[i] = input[refs + 8 + i * 2] | (uint32_t)input[refs + 9 + i * 2] << 8;
+    meta[3] = count;
+  }
   return 0;
 }
 
 static uint8_t *static_model;
-static uint32_t static_length, static_vertices, static_textures;
+static uint32_t static_length, static_vertices, static_textures, static_emitters, static_uv;
 uint32_t world_static_model(uint32_t n) {
   free(static_model);
   static_model = NULL;
@@ -752,6 +805,8 @@ uint32_t world_static_model(uint32_t n) {
   static_length = n;
   static_vertices = vc;
   static_textures = tc;
+  static_emitters = u32(input, 0x128);
+  static_uv = u32(input, 96);
   return 0;
 }
 uint32_t world_static_skin(uint32_t n) {
@@ -797,6 +852,8 @@ uint32_t world_static_skin(uint32_t n) {
   meta[1] = ic;
   meta[2] = bc;
   meta[3] = static_textures;
+  meta[4] = static_emitters;
+  meta[5] = static_uv;
   return 0;
 }
 
@@ -818,15 +875,8 @@ void world_cull(void) {
     out[0] = (uint32_t)(int32_t)roundf(32 - tile->y / TILE_SIZE);
     out[1] = (uint32_t)(int32_t)roundf(32 - tile->x / TILE_SIZE);
     for (uint32_t c = 0; c < CELLS; c++) {
-      float x = tile->x - (c / 16 + .5f) * CELL_SIZE, y = tile->y - (c % 16 + .5f) * CELL_SIZE;
-      const float *h = tile->heights + c * VERTS;
-      float low = h[0], high = h[0];
-      for (uint32_t v = 1; v < VERTS; v++) {
-        low = fminf(low, h[v]);
-        high = fmaxf(high, h[v]);
-      }
-      float z = (low + high) * .5f,
-            r = sqrtf(CELL_SIZE * CELL_SIZE * .5f + (high - low) * (high - low) * .25f);
+      const float *b = tile->chunk_bounds[c];
+      float x = b[0], y = b[1], z = b[2], r = b[3];
       int visible = 1;
       for (uint32_t axis = 0; axis < 3 && visible; axis++)
         for (int sign = -1; sign <= 1; sign += 2) {
@@ -841,4 +891,263 @@ void world_cull(void) {
         out[2 + c / 32] |= 1u << (c % 32);
     }
   }
+}
+
+static uint32_t object_visibility[TILE_CACHE * (OBJECT_WORDS + 2)];
+uint32_t world_object_visibility(void) {
+  return (uint32_t)(uintptr_t)object_visibility;
+}
+static int sphere_visible(const float *m, float x, float y, float z, float radius) {
+  for (uint32_t axis = 0; axis < 3; axis++)
+    for (int sign = -1; sign <= 1; sign += 2) {
+      float nx = m[3] + sign * m[axis], ny = m[7] + sign * m[4 + axis],
+            nz = m[11] + sign * m[8 + axis], d = m[15] + sign * m[12 + axis];
+      if (nx * x + ny * y + nz * z + d < -radius * sqrtf(nx * nx + ny * ny + nz * nz))
+        return 0;
+    }
+  return 1;
+}
+void world_cull_objects(void) {
+  memset(object_visibility, 0, sizeof(object_visibility));
+  for (uint32_t t = 0; t < TILE_CACHE; t++) {
+    GroundTile *tile = &ground[t];
+    uint32_t *out = object_visibility + t * (OBJECT_WORDS + 2);
+    out[0] = out[1] = 0xffffffff;
+    if (!tile->used)
+      continue;
+    out[0] = (uint32_t)(int32_t)roundf(32 - tile->y / TILE_SIZE);
+    out[1] = (uint32_t)(int32_t)roundf(32 - tile->x / TILE_SIZE);
+    for (uint32_t i = 0; i < tile->object_count; i++) {
+      const float *b = tile->objects[i];
+      float dx = b[0] - camera[3], dy = b[1] - camera[4],
+            limit = (tile->kinds[i] ? 420.f : 1000.f) + b[3];
+      if (dx * dx + dy * dy > limit * limit)
+        continue;
+      if (sphere_visible(world_view_output + 32, b[0], b[1], b[2], b[3]))
+        out[2 + i / 32] |= 1u << (i % 32);
+    }
+  }
+}
+
+/* WMO-owned decoration uses local quaternion transforms, then the ADT parent
+ * transform. Keep its visibility registry in WASM across camera transitions. */
+#define DECOR 32768
+#define DECOR_OUTPUT 8192
+static float parent_input[16], decor_bounds[DECOR][4];
+static char decor_names[DECOR_OUTPUT][256];
+static float decor_matrices[DECOR_OUTPUT][16];
+static uint32_t decor_ids[DECOR_OUTPUT], decor_sources[DECOR_OUTPUT], decor_count,
+    decor_mask[DECOR / 32];
+uint32_t world_decor_sources(void) {
+  return (uint32_t)(uintptr_t)decor_sources;
+}
+uint32_t world_parent(void) {
+  return (uint32_t)(uintptr_t)parent_input;
+}
+uint32_t world_decor_names(void) {
+  return (uint32_t)(uintptr_t)decor_names;
+}
+uint32_t world_decor_matrices(void) {
+  return (uint32_t)(uintptr_t)decor_matrices;
+}
+uint32_t world_decor_ids(void) {
+  return (uint32_t)(uintptr_t)decor_ids;
+}
+uint32_t world_decor_visibility(void) {
+  return (uint32_t)(uintptr_t)decor_mask;
+}
+uint32_t world_wmo_decor(uint32_t n, uint32_t selected) {
+  meta[0] = 0;
+  if (n > CAP)
+    return 1;
+  uint32_t names = find(input, n, 0, TAG('M', 'O', 'D', 'N')),
+           defs = find(input, n, 0, TAG('M', 'O', 'D', 'D')),
+           sets = find(input, n, 0, TAG('M', 'O', 'D', 'S'));
+  if (!names || !defs || !sets)
+    return 0;
+  uint32_t count = u32(input, defs + 4) / 40, setcount = u32(input, sets + 4) / 32;
+  if (u32(input, defs + 4) % 40 || u32(input, sets + 4) % 32 || selected >= setcount ||
+      count > DECOR_OUTPUT)
+    return 2;
+  for (uint32_t set = 0; set < setcount; set++) {
+    if (set != 0 && set != selected)
+      continue;
+    uint32_t sa = sets + 8 + set * 32, first = u32(input, sa + 20), number = u32(input, sa + 24);
+    if (first > count || number > count - first)
+      return 3;
+    for (uint32_t j = first; j < first + number; j++) {
+      if (meta[0] >= DECOR_OUTPUT || decor_count >= DECOR)
+        return 4;
+      uint32_t at = defs + 8 + j * 40, off = u32(input, at) & 0xffffff, index = meta[0];
+      if (off >= u32(input, names + 4) ||
+          path_copy(decor_names[index], names + 8 + off, names + 8 + u32(input, names + 4)))
+        return 5;
+      float x = f32(input, at + 16), y = f32(input, at + 20), z = f32(input, at + 24),
+            w = f32(input, at + 28), scale = f32(input, at + 32);
+      float norm = sqrtf(x * x + y * y + z * z + w * w);
+      if (!isfinite(norm) || norm < .0001f || !isfinite(scale) || scale < 0)
+        return 6;
+      x /= norm;
+      y /= norm;
+      z /= norm;
+      w /= norm;
+      float local[16] = {
+          1 - 2 * y * y - 2 * z * z, 2 * x * y + 2 * w * z,     2 * x * z - 2 * w * y,     0,
+          2 * x * y - 2 * w * z,     1 - 2 * x * x - 2 * z * z, 2 * y * z + 2 * w * x,     0,
+          2 * x * z + 2 * w * y,     2 * y * z - 2 * w * x,     1 - 2 * x * x - 2 * y * y, 0,
+          f32(input, at + 4),        f32(input, at + 8),        f32(input, at + 12),       1};
+      for (uint32_t c = 0; c < 3; c++)
+        for (uint32_t r = 0; r < 3; r++)
+          local[c * 4 + r] *= scale;
+      float *out = decor_matrices[index];
+      for (uint32_t c = 0; c < 4; c++)
+        for (uint32_t r = 0; r < 4; r++) {
+          out[c * 4 + r] = 0;
+          for (uint32_t k = 0; k < 4; k++)
+            out[c * 4 + r] += parent_input[k * 4 + r] * local[c * 4 + k];
+          if (!isfinite(out[c * 4 + r]))
+            return 6;
+        }
+      uint32_t id = decor_count++;
+      decor_ids[index] = id;
+      decor_sources[index] = j;
+      for (uint32_t k = 0; k < 3; k++)
+        decor_bounds[id][k] = out[12 + k];
+      decor_bounds[id][3] = fmaxf(30, scale * 30);
+      meta[0]++;
+    }
+  }
+  return 0;
+}
+void world_cull_decor(void) {
+  memset(decor_mask, 0, sizeof(decor_mask));
+  for (uint32_t i = 0; i < decor_count; i++) {
+    const float *b = decor_bounds[i];
+    float x = b[0] - camera[3], y = b[1] - camera[4], limit = 550 + b[3];
+    if (x * x + y * y <= limit * limit &&
+        sphere_visible(world_view_output + 32, b[0], b[1], b[2], b[3]))
+      decor_mask[i / 32] |= 1u << (i % 32);
+  }
+}
+
+/* Owner Light/LightParams/LightIntBand tables. Spatial selection and periodic
+ * color-band interpolation are evaluated in WASM, never in the DOM layer. */
+static uint8_t *environment_tables[3];
+static uint32_t environment_lengths[3], band_rows[65536], parameter_rows[4096];
+static float sky_values[58];
+static uint32_t selected_sky;
+uint32_t world_sky_values(void) {
+  return (uint32_t)(uintptr_t)sky_values;
+}
+uint32_t world_sky_id(void) {
+  return selected_sky;
+}
+uint32_t world_environment_load(uint32_t kind, uint32_t n) {
+  if (kind > 2 || n < 20 || n > 4 * 1024 * 1024 || u32(input, 0) != 0x43424457)
+    return 1;
+  uint32_t count = u32(input, 4), fields = u32(input, 8), stride = u32(input, 12),
+           minimum = kind == 0   ? 15
+                     : kind == 1 ? 9
+                                 : 34;
+  if (fields < minimum || stride != fields * 4 || !span(n, 20, count, stride) ||
+      20 + count * stride + u32(input, 16) != n)
+    return 2;
+  uint8_t *copy = malloc(n);
+  if (!copy)
+    return 3;
+  memcpy(copy, input, n);
+  free(environment_tables[kind]);
+  environment_tables[kind] = copy;
+  environment_lengths[kind] = n;
+  if (kind) {
+    uint32_t *index = kind == 1 ? parameter_rows : band_rows, capacity = kind == 1 ? 4096 : 65536;
+    memset(index, 0, capacity * sizeof(uint32_t));
+    for (uint32_t i = 0; i < count; i++) {
+      uint32_t a = 20 + i * stride, id = u32(copy, a);
+      if (id >= capacity)
+        return 4;
+      index[id] = a;
+    }
+  }
+  return 0;
+}
+static void sky_band(uint32_t parameter, uint32_t band, float time, float *out) {
+  const uint8_t *b = environment_tables[2];
+  uint32_t id = (parameter - 1) * 18 + band + 1;
+  if (!b || id >= 65536 || !band_rows[id])
+    return;
+  uint32_t at = band_rows[id], count = u32(b, at + 4);
+  if (!count || count > 16)
+    return;
+  uint32_t lo = count - 1, hi = 0;
+  float t0 = (float)u32(b, at + 8 + lo * 4) - 2880, t1 = (float)u32(b, at + 8);
+  for (uint32_t i = 0; i < count; i++) {
+    float t = (float)u32(b, at + 8 + i * 4);
+    if (t <= time) {
+      lo = i;
+      t0 = t;
+    }
+    if (t > time) {
+      hi = i;
+      t1 = t;
+      break;
+    }
+    hi = 0;
+    t1 = (float)u32(b, at + 8) + 2880;
+  }
+  float fraction = t1 > t0 ? (time - t0) / (t1 - t0) : 0;
+  uint32_t a = u32(b, at + 72 + lo * 4), c = u32(b, at + 72 + hi * 4);
+  for (uint32_t j = 0; j < 3; j++) {
+    uint32_t shift = 16 - j * 8;
+    float x = (a >> shift) & 255, y = (c >> shift) & 255;
+    out[j] = (x + (y - x) * fraction) / 255;
+  }
+}
+uint32_t world_environment(uint32_t map, float time, float elapsed) {
+  if (!environment_tables[0] || !environment_tables[1] || !environment_tables[2] ||
+      !isfinite(time) || !isfinite(elapsed))
+    return 1;
+  time = fmodf(fmaxf(0, time), 2880);
+  const uint8_t *b = environment_tables[0];
+  uint32_t count = u32(b, 4), stride = u32(b, 12), selected = 0, fallback = 0;
+  float best = 0, best_radius = 1e9f;
+  for (uint32_t i = 0; i < count; i++) {
+    uint32_t a = 20 + i * stride;
+    if (u32(b, a + 4) != map)
+      continue;
+    float x = f32(b, a + 8), y = f32(b, a + 12), z = f32(b, a + 16);
+    if (!x && !y && !z) {
+      fallback = u32(b, a + 28);
+      continue;
+    }
+    float dx = 32 * TILE_SIZE - z / 36 - camera[3], dy = 32 * TILE_SIZE - x / 36 - camera[4],
+          dz = y / 36 - camera[5], inner = f32(b, a + 20) / 36, outer = f32(b, a + 24) / 36;
+    float d = sqrtf(dx * dx + dy * dy + dz * dz),
+          weight = outer > inner ? fminf(1, fmaxf(0, (outer - d) / (outer - inner))) : 0;
+    if (weight > best || (weight == best && weight > 0 && outer < best_radius)) {
+      selected = u32(b, a + 28);
+      best = weight;
+      best_radius = outer;
+    }
+  }
+  if (!selected)
+    selected = fallback;
+  if (!fallback)
+    fallback = selected;
+  if (!selected || selected >= 4096 || !parameter_rows[selected])
+    return 2;
+  for (uint32_t band = 0; band < 18; band++) {
+    float a[3] = {0}, c[3] = {0};
+    sky_band(fallback, band, time, a);
+    sky_band(selected, band, time, c);
+    for (uint32_t j = 0; j < 3; j++)
+      sky_values[band * 3 + j] = a[j] + (c[j] - a[j]) * best;
+  }
+  selected_sky = u32(environment_tables[1], parameter_rows[selected] + 8);
+  float angle = (time / 2880 - .25f) * 6.283185307f;
+  sky_values[54] = cosf(angle);
+  sky_values[55] = .3f;
+  sky_values[56] = sinf(angle);
+  sky_values[57] = fmodf(elapsed * .000005f, 1.f);
+  return 0;
 }

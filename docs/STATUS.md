@@ -2,7 +2,7 @@
 
 Updated: 2026-10-29.
 
-brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. An initial outdoor world-entry implementation is now available for manual validation; general in-world gameplay is not implemented.
+brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and initial outdoor-world flow. An initial outdoor world-entry implementation is now available for manual validation; general in-world gameplay is not implemented.
 
 ## Implemented
 
@@ -19,6 +19,8 @@ brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. 
 - Bald hair variants retain their scalp mesh; facial customization maps the source table's 1/3/2 geoset order for features such as piercings and tusks.
 - Hunters preview their source-provided ranged weapon. Bows use the left palm; shields use the forearm mount while retaining the left-hand grip pose.
 
+- Character deletion preserves the original typed confirmation, captures the confirmed GUID, waits for the server response and refreshes the roster on success.
+
 ## First outdoor world entry
 
 - Enter World sends the selected character GUID and uses the server-provided map and position.
@@ -27,7 +29,12 @@ brWoWser targets the WotLK 3.3.5a build 12340 login-to-character-creation flow. 
 - C/WASM evaluates the source introduction camera spline, terrain heights, ground movement, player placement and view matrices. JavaScript owns browser I/O, input forwarding, media playback and WebGL submission.
 - Server-triggered introductions resolve their source camera and narration. Escape opens a canvas C/Lua confirmation; completion restores the follow camera.
 - Initial outdoor controls support forward/backward movement, turning, strafing, right-button camera orbit and wheel zoom, with server movement packets and stand/run poses.
-- Builds and bounded owner-resource decoding have been inspected. Live entry, visual appearance, introduction controls and movement still require manual validation.
+- Archive sector reads use a bounded block cache; decoded textures transfer to the browser without another buffer copy. Frame samples take priority over background reads, and a bounded queue loads visible scenery instead of every asset in each tile.
+- ADT object records persist across camera movement and cinematic skipping; C/WASM recomputes their visibility for the current view. Terrain bounds are prepared once during decoding.
+- WMO decoration sets and exterior-group references admit the five Valley of Heroes statues and source-authored props. Torches and chimneys use original particle records with instance-local camera transforms.
+- Sky color bands and their spatial/time selection run in C/WASM from Light tables; server game time anchors the clock.
+- World drawing is presented at an animation-frame boundary. Input/audio acknowledgements no longer present UI-only frames over the world.
+- Builds and bounded owner-resource decoding have been inspected. The latest visual changes, load times, deletion controls and frame stability require manual validation.
 
 ## Current review
 

@@ -3,6 +3,7 @@
 export const WORLD = Object.freeze({
   login: 0x3d,
   loginFailed: 0x41,
+  gameTime: 0x42,
   verify: 0x236,
   cinematic: 0xfa,
   cinematicBegin: 0xfb,

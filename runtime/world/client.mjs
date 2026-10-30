@@ -2,6 +2,7 @@ import { parseDBC } from '../character/catalog.mjs';
 import { createCharacterPreview } from '../character/renderer.mjs';
 import { createTerrainRenderer } from './terrain_renderer.mjs';
 import { createStructureRenderer } from './structure_renderer.mjs';
+import { createSkyRenderer } from './sky_renderer.mjs';
 
 // Browser orchestration only. Decoding, spline evaluation, ground sampling,
 // movement, player placement and view matrices run in the asset worker's WASM.
@@ -16,9 +17,11 @@ export async function createWorldClient({
   send,
   onIssue = console.warn,
   isCurrent = () => true,
+  onProgress = () => {},
 }) {
   let disposed = false,
     player,
+    skyRenderer,
     cinematic,
     voice,
     voiceURL,
@@ -29,7 +32,11 @@ export async function createWorldClient({
     lastFlags = 0,
     introductionPending = null,
     introductionId = 0,
-    narrationBlocked = false;
+    narrationBlocked = false,
+    lastCompleteState,
+    needsHandoff = false,
+    decorRevision = 0,
+    loadMilliseconds = 0;
   let modal = false,
     inputX = 0,
     inputY = 0,
@@ -37,8 +44,32 @@ export async function createWorldClient({
   const keys = new Set(),
     tiles = new Map(),
     structures = new Map(),
+    decoration = new Map(),
+    loadQueue = [],
     listeners = [];
   const started = performance.now();
+  let timeAnchor = entry.gameTime ?? 720,
+    timeReceived = entry.timeReceived ?? performance.timeOrigin + performance.now();
+  let activeLoads = 0;
+  function runLoads() {
+    while (activeLoads < 3 && loadQueue.length) {
+      const job = loadQueue.shift();
+      activeLoads++;
+      Promise.resolve()
+        .then(() => (disposed || !isCurrent() ? undefined : job.load()))
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          activeLoads--;
+          runLoads();
+        });
+    }
+  }
+  function enqueue(load) {
+    return new Promise((resolve, reject) => {
+      loadQueue.push({ load, resolve, reject });
+      runLoads();
+    });
+  }
   const listen = (target, name, handler, options) => {
     target.addEventListener(name, handler, options);
     listeners.push(() => target.removeEventListener(name, handler, options));
@@ -48,6 +79,7 @@ export async function createWorldClient({
     disposed = true;
     for (const remove of listeners) remove();
     player?.dispose();
+    skyRenderer?.dispose();
     for (const tile of tiles.values()) tile.renderer?.dispose();
     for (const structure of structures.values())
       for (const renderer of structure.renderers) renderer.dispose();
@@ -60,6 +92,14 @@ export async function createWorldClient({
   try {
     await source.world('init', { wasm: modules.world });
     await source.world('spawn', { position: entry.location.position });
+    await source.world('environment');
+    let cloudTexture;
+    try {
+      cloudTexture = await source.decodeTexture('Environments\\Stars\\StarsAndClouds.blp');
+    } catch (error) {
+      onIssue(error.message);
+    }
+    skyRenderer = createSkyRenderer(gl, cloudTexture);
     const maps = await table('Map', 2),
       row = maps.byId(entry.location.map);
     if (row === undefined) throw Error('The server selected a map absent from the client');
@@ -81,12 +121,40 @@ export async function createWorldClient({
     if (tileTable === undefined) throw Error('This map has no supported outdoor terrain');
     async function loadStructure(path, kind) {
       if (structures.has(path)) return structures.get(path).promise;
-      if (structures.size >= 96) return;
-      const structure = { renderers: [] };
+      if (structures.size >= 256) return;
+      const structure = { renderers: [], doodadRefs: new Set() };
       structures.set(path, structure);
-      structure.promise = (async () => {
+      structure.promise = enqueue(async () => {
         if (kind === 'm2') {
           const mesh = await source.world('static-model', { path: path.replace(/\.mdx$/i, '.m2') });
+          if (mesh.effects?.emitters || mesh.effects?.uv) {
+            const preview = await createCharacterPreview({
+              gl,
+              canvas,
+              ...source,
+              modules,
+              prepareWasm,
+              worldPropPath: path.replace(/\.mdx$/i, '.m2'),
+              isCurrent: () => !disposed && isCurrent(),
+              onIssue,
+            });
+            if (disposed || !isCurrent()) {
+              preview.dispose();
+              return;
+            }
+            structure.renderers.push({
+              dispose: () => preview.dispose(),
+              draw: (view, placement) =>
+                preview.draw({
+                  elapsed: performance.now() - started,
+                  viewState: view,
+                  placement,
+                  clear: false,
+                  preserveDepth: true,
+                }).triangles,
+            });
+            return;
+          }
           const images = [];
           for (const material of mesh.materials)
             images.push(await source.decodeTexture(material.path));
@@ -100,6 +168,7 @@ export async function createWorldClient({
           const mesh = await source.world('wmo-group', {
             path: path.replace(/\.wmo$/i, '_' + String(group).padStart(3, '0') + '.wmo'),
           });
+          for (const index of mesh.doodadRefs || []) structure.doodadRefs.add(index);
           if (!mesh.batches.length) continue;
           const used = new Set();
           for (let i = 2; i < mesh.batches.length; i += 8) used.add(mesh.batches[i]);
@@ -109,8 +178,38 @@ export async function createWorldClient({
           if (disposed || !isCurrent()) return;
           structure.renderers.push(createStructureRenderer(gl, mesh, root.materials, images));
         }
-      })().catch((error) => onIssue('Structure ' + path + ': ' + error.message));
+      })
+        .catch((error) => {
+          structure.error = error;
+          onIssue('Structure ' + path + ': ' + error.message);
+        })
+        .finally(() => {
+          structure.ready = true;
+        });
       return structure.promise;
+    }
+    function loadDecoration(object) {
+      if (object.kind !== 'wmo') return Promise.resolve();
+      const key = object.id + ':' + object.path;
+      if (decoration.has(key)) return decoration.get(key).promise;
+      const record = { children: [], parentPath: object.path };
+      decoration.set(key, record);
+      record.promise = enqueue(async () => {
+        const result = await source.world('wmo-decor', {
+          path: object.path,
+          placement: object.placement,
+          doodadSet: object.doodadSet,
+        });
+        if (!disposed && isCurrent()) {
+          record.children = result.children;
+          decorRevision++;
+        }
+      })
+        .catch((error) => onIssue('Decoration ' + object.path + ': ' + error.message))
+        .finally(() => {
+          record.ready = true;
+        });
+      return record.promise;
     }
     async function loadTile(x, y, required = false) {
       if (x < 0 || x >= 64 || y < 0 || y >= 64) return;
@@ -135,7 +234,6 @@ export async function createWorldClient({
         state.tileX = x;
         state.tileY = y;
         state.objects = tile.objects;
-        for (const object of tile.objects) await loadStructure(object.path, object.kind);
       })().catch((error) => {
         state.error = error;
         if (required) throw error;
@@ -215,16 +313,83 @@ export async function createWorldClient({
       inputZoom,
     ];
     async function sample(elapsed) {
-      const data = { elapsed, controls: controls(), aspect: canvas.width / canvas.height };
+      const data = {
+        elapsed,
+        controls: controls(),
+        aspect: canvas.width / canvas.height,
+        map: entry.location.map,
+        time:
+          (timeAnchor + (performance.timeOrigin + performance.now() - timeReceived) / 60000) * 2,
+        globalMs: performance.now() - started,
+      };
       if (cinematic) data.cinematicMs = Math.min(cinematic.duration, Math.floor(cinematicMs));
       inputX = inputY = inputZoom = 0;
       return source.world('sample', data);
     }
+    function visibleObjects(state, tile) {
+      let mask;
+      for (let i = 0; i < state.objectVisibility.length; i += 130)
+        if (
+          state.objectVisibility[i] === tile.tileX &&
+          state.objectVisibility[i + 1] === tile.tileY
+        ) {
+          mask = state.objectVisibility.subarray(i + 2, i + 130);
+          break;
+        }
+      return (tile.objects || []).filter(
+        (object, index) => !mask || !!(mask[index >>> 5] & (1 << (index & 31))),
+      );
+    }
+    function visibleDecor(state) {
+      const result = [];
+      for (const record of decoration.values())
+        for (const child of record.children) {
+          if (!structures.get(record.parentPath)?.doodadRefs.has(child.sourceIndex)) continue;
+          if (state.decorVisibility[child.decorId >>> 5] & (1 << (child.decorId & 31)))
+            result.push(child);
+        }
+      return result;
+    }
+    function prepareVisible(state) {
+      const jobs = [],
+        seen = new Set();
+      let pending = false;
+      for (const tile of tiles.values())
+        for (const object of visibleObjects(state, tile)) {
+          if (object.kind === 'wmo' && !decoration.get(object.id + ':' + object.path)?.ready)
+            pending = true;
+          jobs.push(loadDecoration(object));
+          if (seen.has(object.path)) continue;
+          seen.add(object.path);
+          if (!structures.get(object.path)?.ready) pending = true;
+          jobs.push(loadStructure(object.path, object.kind));
+        }
+      for (const child of visibleDecor(state))
+        if (!seen.has(child.path)) {
+          seen.add(child.path);
+          if (!structures.get(child.path)?.ready) pending = true;
+          jobs.push(loadStructure(child.path, 'm2'));
+        }
+      if (pending && cinematic) voice?.pause();
+      return Promise.all(jobs);
+    }
+    onProgress({ phase: 'terrain' });
     const initial = await sample(0);
-    await loadTile(initial.tiles[2], initial.tiles[3], true);
     await loadTile(initial.tiles[0], initial.tiles[1], true);
+    await Promise.all(
+      Array.from({ length: 9 }, (_, i) =>
+        loadTile(initial.tiles[0] + (i % 3) - 1, initial.tiles[1] + Math.floor(i / 3) - 1),
+      ),
+    );
+    await loadTile(initial.tiles[2], initial.tiles[3], true);
+    onProgress({ phase: 'scene' });
+    const warmed = await sample(0);
+    await prepareVisible(warmed);
+    await prepareVisible(await sample(0));
     if (disposed || !isCurrent()) throw Error('World loading cancelled');
+    lastCompleteState = warmed;
     await send({ operation: 'ready' });
+    loadMilliseconds = Math.round(performance.now() - started);
     let orbiting = false;
     listen(
       canvas,
@@ -283,7 +448,7 @@ export async function createWorldClient({
           event.stopImmediatePropagation();
         }
         if (voice?.paused && cinematicBegun && !modal) {
-          narrationBlocked = false;
+          ((narrationBlocked = false), lastCompleteState, (needsHandoff = false));
           voice.play().catch(() => {
             narrationBlocked = true;
           });
@@ -322,6 +487,10 @@ export async function createWorldClient({
     return {
       dispose,
       sync(next) {
+        if (next.gameTime !== undefined && next.timeReceived !== timeReceived) {
+          timeAnchor = next.gameTime;
+          timeReceived = next.timeReceived;
+        }
         const wasModal = modal;
         modal = !!next.modal;
         if (next.cinematic && next.cinematic !== introductionId && !introductionPending) {
@@ -338,20 +507,25 @@ export async function createWorldClient({
           cinematic = null;
           confirmedSkip = wasModal;
           voice?.pause();
+          needsHandoff = true;
         }
       },
       async draw(elapsed) {
-        if (disposed || introductionPending) return;
-        const state = await sample(modal || cinematic ? 0 : elapsed);
+        if (disposed) return;
+        let state = introductionPending
+          ? lastCompleteState
+          : await sample(modal || cinematic ? 0 : elapsed);
+        if (!state) return;
         const x = state.tiles[0],
           y = state.tiles[1],
           current = tiles.get(x + ':' + y);
         if (!current?.renderer) {
           if (current?.error) throw current.error;
-          loadTile(x, y, true).catch((error) => onIssue(error.message));
           voice?.pause();
-          return;
+          await loadTile(x, y, true);
+          state = await sample(0);
         }
+        lastCompleteState = state;
         // Keep a bounded 3x3 neighborhood around the current viewpoint. Source
         // terrain never becomes a fabricated flat fallback when a read fails.
         for (let dy = -1; dy <= 1; dy++)
@@ -364,7 +538,14 @@ export async function createWorldClient({
             tiles.delete(key);
           }
         }
-        if (cinematic && !modal) {
+        const revision = decorRevision;
+        await prepareVisible(state);
+        if (needsHandoff || revision !== decorRevision) {
+          state = await sample(0);
+          await prepareVisible(state);
+          needsHandoff = false;
+        }
+        if (cinematic && !modal && !introductionPending) {
           if (!cinematicBegun) {
             await send({ operation: 'cinematic-begin' });
             cinematicBegun = true;
@@ -379,6 +560,7 @@ export async function createWorldClient({
           if (cinematicMs >= cinematic.duration) {
             await send({ operation: 'cinematic-end' });
             cinematic = null;
+            needsHandoff = true;
             voice?.pause();
           }
         } else if (modal) voice?.pause();
@@ -389,41 +571,6 @@ export async function createWorldClient({
           particleView: state.view.subarray(48, 64),
           eye: state.view.subarray(64, 67),
         };
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.disable(gl.SCISSOR_TEST);
-        gl.depthMask(true);
-        gl.clearColor(0.53, 0.67, 0.78, 1);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        let triangles = 0;
-        for (const tile of tiles.values())
-          if (tile.renderer) {
-            let mask;
-            for (let i = 0; i < state.visibility.length; i += 10)
-              if (state.visibility[i] === tile.tileX && state.visibility[i + 1] === tile.tileY) {
-                mask = state.visibility.subarray(i + 2, i + 10);
-                break;
-              }
-            triangles += tile.renderer.draw(view, mask);
-          }
-        const drawnObjects = new Set();
-        for (const tile of tiles.values())
-          for (const object of tile.objects || []) {
-            if (drawnObjects.has(object.id)) continue;
-            drawnObjects.add(object.id);
-            for (const renderer of structures.get(object.path)?.renderers || [])
-              triangles += renderer.draw(view, object.placement);
-          }
-        if (!cinematic)
-          player.draw({
-            elapsed: performance.now() - started,
-            facing: state.player[3],
-            moving: !!(state.player[4] & 15),
-            viewState: view,
-            placement: state.placement,
-            clear: false,
-            preserveDepth: true,
-          });
         const now = performance.now(),
           flags = state.player[4];
         if (!cinematic && !modal && (flags !== lastFlags || now - movementAt >= 500)) {
@@ -453,7 +600,51 @@ export async function createWorldClient({
           lastFlags = flags;
           movementAt = now;
         }
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        if (disposed || !isCurrent()) return;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.depthMask(true);
+        gl.clearColor(0.53, 0.67, 0.78, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        skyRenderer.draw(state);
+        let triangles = 0;
+        for (const tile of tiles.values())
+          if (tile.renderer) {
+            let mask;
+            for (let i = 0; i < state.visibility.length; i += 10)
+              if (state.visibility[i] === tile.tileX && state.visibility[i + 1] === tile.tileY) {
+                mask = state.visibility.subarray(i + 2, i + 10);
+                break;
+              }
+            triangles += tile.renderer.draw(view, mask);
+          }
+        const drawnObjects = new Set();
+        for (const tile of tiles.values())
+          for (const object of visibleObjects(state, tile)) {
+            if (drawnObjects.has(object.id)) continue;
+            drawnObjects.add(object.id);
+            for (const renderer of structures.get(object.path)?.renderers || [])
+              triangles += renderer.draw(view, object.placement);
+          }
+        for (const object of visibleDecor(state))
+          for (const renderer of structures.get(object.path)?.renderers || [])
+            triangles += renderer.draw(view, object.placement);
+        if (!cinematic)
+          player.draw({
+            elapsed: performance.now() - started,
+            facing: state.player[3],
+            moving: !!(state.player[4] & 15),
+            viewState: view,
+            placement: state.placement,
+            clear: false,
+            preserveDepth: true,
+          });
         return {
+          load_ms: loadMilliseconds,
+          network_ms: entry.networkMs,
+          queued_assets: loadQueue.length,
           phase: cinematic ? 'cinematic' : 'world',
           triangles,
           tiles: [...tiles.values()].filter((t) => t.renderer).length,

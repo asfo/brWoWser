@@ -16,6 +16,7 @@ export async function createCharacterPreview({
   prepareWasm,
   backgroundPath,
   attachmentSpec,
+  worldPropPath,
   isCurrent,
   onIssue = () => {},
 }) {
@@ -28,6 +29,7 @@ export async function createCharacterPreview({
     prepareWasm,
     backgroundPath,
     attachmentSpec,
+    worldPropPath,
     isCurrent,
     onIssue,
   });
@@ -256,7 +258,11 @@ export async function createCharacterPreview({
         model.motion(moving);
         if (model.animated) {
           gl.bindBuffer(gl.ARRAY_BUFFER, positions);
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, model.sample(elapsed, view));
+          gl.bufferSubData(
+            gl.ARRAY_BUFFER,
+            0,
+            model.sample(elapsed, model.localView(view, placement)),
+          );
           gl.bindBuffer(gl.ARRAY_BUFFER, normals);
           gl.bufferSubData(gl.ARRAY_BUFFER, 0, model.animatedNormals());
         }
@@ -344,7 +350,10 @@ export async function createCharacterPreview({
           if (!model.metadata.isBackground && Math.floor(range.geoset / 100) === 17)
             eyeGlowTriangles += range.count / 3;
         }
-        const particleSample = model.sampleParticles(elapsed, particleView);
+        const particleSample = model.sampleParticles(
+          elapsed,
+          model.localView(particleView, placement),
+        );
         let particleStats = { particles: 0, particle_batches: 0 };
         if (particleSample)
           particleStats = (particleRenderer ??= createParticleRenderer(gl, textures)).draw(
