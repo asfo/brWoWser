@@ -36,18 +36,25 @@ export async function createCharacterPreview({
   let program,
     vao,
     particleRenderer,
+    portraitTexture,
+    portraitFramebuffer,
+    portraitDepth,
     disposed = false;
   let lastPointLights = [];
   const attachments = [];
   const buffers = [],
     textures = [],
     shaders = [];
-  function dispose() {
-    if (disposed) return;
-    disposed = true;
+  function disposePortrait() {
     if (portraitTexture) gl.deleteTexture(portraitTexture);
     if (portraitFramebuffer) gl.deleteFramebuffer(portraitFramebuffer);
     if (portraitDepth) gl.deleteRenderbuffer(portraitDepth);
+    portraitTexture = portraitFramebuffer = portraitDepth = null;
+  }
+  function dispose() {
+    if (disposed) return;
+    disposed = true;
+    disposePortrait();
     particleRenderer?.dispose();
     for (const child of attachments) child.preview.dispose();
     for (const buffer of buffers) gl.deleteBuffer(buffer);
@@ -188,13 +195,20 @@ export async function createCharacterPreview({
       lights: () => lastPointLights,
       dispose,
       createPortraitTexture() {
+        if (disposed || gl.isContextLost()) throw Error('Character preview is unavailable');
         if (portraitTexture) return portraitTexture;
         const previous = gl.getParameter(gl.FRAMEBUFFER_BINDING),
-          viewport = gl.getParameter(gl.VIEWPORT);
+          viewport = gl.getParameter(gl.VIEWPORT),
+          previousRenderbuffer = gl.getParameter(gl.RENDERBUFFER_BINDING),
+          previousScissor = gl.getParameter(gl.SCISSOR_BOX),
+          scissorEnabled = gl.isEnabled(gl.SCISSOR_TEST),
+          previousClear = gl.getParameter(gl.COLOR_CLEAR_VALUE);
         try {
           portraitTexture = gl.createTexture();
           portraitFramebuffer = gl.createFramebuffer();
           portraitDepth = gl.createRenderbuffer();
+          if (!portraitTexture || !portraitFramebuffer || !portraitDepth)
+            throw Error('Portrait resource allocation failed');
           gl.bindTexture(gl.TEXTURE_2D, portraitTexture);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -229,9 +243,17 @@ export async function createCharacterPreview({
             clear: false,
           });
           return portraitTexture;
+        } catch (error) {
+          disposePortrait();
+          throw error;
         } finally {
           gl.bindFramebuffer(gl.FRAMEBUFFER, previous);
+          gl.bindRenderbuffer(gl.RENDERBUFFER, previousRenderbuffer);
           gl.viewport(...viewport);
+          gl.scissor(...previousScissor);
+          if (scissorEnabled) gl.enable(gl.SCISSOR_TEST);
+          else gl.disable(gl.SCISSOR_TEST);
+          gl.clearColor(...previousClear);
         }
       },
       draw({

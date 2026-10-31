@@ -1152,7 +1152,7 @@ const launch = (event) => {
         ui_asset_issues: uiAssets.issues,
         protected_failures: transition.result.protected_failures,
         heartbeat_during_pending: transition.heartbeat_during_pending,
-        cross_origin_isolated: crossOriginIsolated,
+        cross_origin_isolated: window.crossOriginIsolated,
       };
     } catch (error) {
       disposeCharacter();
