@@ -30,17 +30,21 @@ export function createWorldAudio(source, { settings = [], onIssue = console.warn
     for (let channel = 0; channel < 3; channel++) {
       const descriptor = channels?.[channel],
         slot = slots[channel];
-      const key = descriptor && gains[channel] ? descriptor.id + ':' + descriptor.revision : '';
+      const key =
+        descriptor?.path && gains[channel] ? descriptor.id + ':' + descriptor.revision : '';
       if (key === slot.key) continue;
       stop(slot);
       slot.key = key;
+      slot.path = descriptor?.path || '';
+      slot.state = key ? 'scheduled' : 'silent';
       if (!key || !descriptor.path) continue;
       const mine = slot.generation;
       slot.timer = setTimeout(
         async () => {
           slot.timer = null;
           try {
-            const bytes = await source.readAsset(descriptor.path);
+            slot.state = 'loading';
+            const bytes = await (source.readAudio || source.readAsset)(descriptor.path);
             if (closed || mine !== slot.generation) return;
             const element = new Audio();
             const magic = String.fromCharCode(...bytes.subarray(0, 4));
@@ -57,7 +61,10 @@ export function createWorldAudio(source, { settings = [], onIssue = console.warn
             element.loop = channel === 1;
             element.preload = 'auto';
             element.src = slot.url;
-            element.onerror = () => onIssue('World audio decode failed: ' + descriptor.path);
+            element.onerror = () => {
+              slot.state = 'error';
+              onIssue('World audio decode failed: ' + descriptor.path);
+            };
             if (channel === 0)
               element.onended = () => {
                 source
@@ -68,9 +75,12 @@ export function createWorldAudio(source, { settings = [], onIssue = console.warn
                   .catch((error) => onIssue(error.message));
               };
             await slot.player.play();
+            if (mine === slot.generation) slot.state = 'started';
           } catch (error) {
-            if (!closed && mine === slot.generation)
+            if (!closed && mine === slot.generation) {
+              slot.state = 'error';
               onIssue('World audio ' + descriptor.path + ': ' + error.message);
+            }
           }
         },
         Math.max(0, descriptor.delay || 0),
@@ -79,6 +89,14 @@ export function createWorldAudio(source, { settings = [], onIssue = console.warn
   }
   return {
     sync,
+    status: () =>
+      slots.map((slot) => ({
+        path: slot.path || '',
+        state: slot.state || 'silent',
+        paused: slot.element?.paused ?? true,
+        time: slot.element?.currentTime || 0,
+        readyState: slot.element?.readyState || 0,
+      })),
     dispose() {
       if (closed) return;
       closed = true;

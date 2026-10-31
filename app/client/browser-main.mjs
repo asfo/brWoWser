@@ -1144,6 +1144,7 @@ window.addEventListener(
   'keydown',
   (event) => {
     if (event.altKey && event.key === 'Enter') return;
+    if (event.code === 'Space' && window.uiInputState?.world_entry) return;
     const key = { Escape: 'ESCAPE', Enter: 'ENTER', ' ': 'SPACE' }[event.key];
     // A held confirmation key must not become Enter World after a modal closes.
     if (key === 'ENTER' && event.repeat) {

@@ -2,6 +2,10 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { runClang } from '../../tools/compiler.mjs';
 const source = await readFile(new URL('../../runtime/world/world.c', import.meta.url));
 const exports = [
+  'world_movement_output',
+  'world_movement_next',
+  'world_movement_clock',
+  'world_movement_begin',
   'world_audio_load',
   'world_audio_info',
   'world_audio_paths',

@@ -284,26 +284,172 @@ static float terrain_height(float x, float y) {
   }
   return NAN;
 }
+#define PLAYER_RADIUS .35f
+#define PLAYER_HEIGHT 1.8f
+#define STEP_HEIGHT .55f
+#define GRAVITY 19.29110527f
+#define JUMP_SPEED 7.955547f
+#define FALLING 0x1000u
+typedef struct {
+  uint32_t opcode, flags, time, fall_time;
+  float position[4], jump[4];
+} MoveEvent;
+static MoveEvent move_events[16], move_output;
+static uint32_t move_head, move_count, move_clock, last_sent, last_flags;
+static int movement_enabled, grounded = 1, jump_held, jumped, move_overflow;
+static float vertical_speed, air_time, air_x, air_y, jump_speed, jump_sin, jump_cos, landing_time;
+uint32_t world_movement_output(void) {
+  return (uint32_t)(uintptr_t)&move_output;
+}
+void world_movement_clock(uint32_t milliseconds) {
+  move_clock = milliseconds;
+}
+void world_movement_begin(void) {
+  move_head = move_count = move_overflow = 0;
+  last_flags = (uint32_t)player[4];
+  last_sent = move_clock;
+  movement_enabled = 1;
+}
+uint32_t world_movement_next(void) {
+  if (!move_count)
+    return 1;
+  move_output = move_events[move_head];
+  move_head = (move_head + 1) % 16;
+  move_count--;
+  return 0;
+}
+static void movement_event(uint32_t opcode, uint32_t flags) {
+  if (!movement_enabled)
+    return;
+  if (move_count == 16) {
+    move_overflow = 1;
+    return;
+  }
+  MoveEvent *e = &move_events[(move_head + move_count++) % 16];
+  e->opcode = opcode;
+  e->flags = flags;
+  e->time = move_clock;
+  e->fall_time = (uint32_t)(air_time * 1000);
+  memcpy(e->position, player, sizeof(e->position));
+  e->jump[0] = jump_speed;
+  e->jump[1] = jump_sin;
+  e->jump[2] = jump_cos;
+  e->jump[3] = sqrtf(air_x * air_x + air_y * air_y);
+  last_flags = flags;
+  last_sent = move_clock;
+}
 uint32_t world_spawn(void) {
   for (uint32_t i = 0; i < 4; i++)
     if (!isfinite(controls[i]))
       return 1;
+  memset(player, 0, sizeof(player));
   memcpy(player, controls, 4 * sizeof(float));
-  player[4] = player[5] = 0;
   player[6] = player[3];
+  player[7] = 1;
+  grounded = 1;
+  jump_held = jumped = 0;
+  movement_enabled = move_overflow = 0;
+  move_head = move_count = 0;
+  vertical_speed = air_time = air_x = air_y = landing_time = 0;
   return 0;
 }
-static int move_position(float x, float y) {
-  float terrain = terrain_height(x, y),
-        surface = bw_collision_floor(x, y, player[2] - 1.8f, player[2] + .55f);
-  float z = isfinite(surface) && (!isfinite(terrain) || surface > terrain) ? surface : terrain;
-  if (!isfinite(z) || z - player[2] > .55f || player[2] - z > 1.8f)
-    return 0;
+static float ground_height(float x, float y, float low, float high) {
+  float terrain = terrain_height(x, y), mesh = bw_collision_floor(x, y, low, high);
+  if (!isfinite(terrain) || terrain < low || terrain > high)
+    return mesh;
+  return isfinite(mesh) ? fmaxf(terrain, mesh) : terrain;
+}
+static int blocked_at(float x, float y, float z) {
   float feet[3] = {x, y, z};
-  if (bw_collision_blocked(feet, .35f, 1.8f))
+  return bw_collision_blocked(feet, PLAYER_RADIUS, PLAYER_HEIGHT);
+}
+/* Sweep the capsule, not just a ray through its center. This supports stair
+ * edges and ramps while retaining clearance for walls and low ceilings. */
+static float descend(float x, float y, float from, float to, int *contact) {
+  float z = from;
+  *contact = 0;
+  uint32_t count = (uint32_t)ceilf(fabsf(from - to) / .06f);
+  if (!count)
+    count = 1;
+  for (uint32_t i = 1; i <= count; i++) {
+    float next = from + (to - from) * i / count;
+    if (blocked_at(x, y, next)) {
+      float free_z = z, solid_z = next;
+      for (uint32_t j = 0; j < 10; j++) {
+        float middle = (free_z + solid_z) * .5f;
+        if (blocked_at(x, y, middle))
+          solid_z = middle;
+        else
+          free_z = middle;
+      }
+      *contact = 1;
+      return free_z;
+    }
+    z = next;
+  }
+  return z;
+}
+static int ground_move(float x, float y) {
+  float z = ground_height(x, y, player[2] - .65f, player[2] + STEP_HEIGHT);
+  if (!isfinite(z)) {
+    /* Known lower ground is a ledge. Unloaded terrain remains a barrier. */
+    float below = ground_height(x, y, player[2] - 200, player[2] + STEP_HEIGHT);
+    return isfinite(below) && below < player[2] - .65f ? 2 : 0;
+  }
+  if (!blocked_at(x, y, z)) {
+    player[0] = x;
+    player[1] = y;
+    player[2] = z;
+    return 1;
+  }
+  float raised = player[2] + STEP_HEIGHT;
+  for (uint32_t i = 1; i <= 10; i++)
+    if (blocked_at(player[0], player[1], player[2] + STEP_HEIGHT * i / 10))
+      return 0;
+  if (blocked_at(x, y, raised))
     return 0;
-  memcpy(player, feet, sizeof(feet));
+  int contact;
+  float supported = descend(x, y, raised, z, &contact);
+  if (blocked_at(x, y, supported))
+    return 0;
+  player[0] = x;
+  player[1] = y;
+  player[2] = supported;
   return 1;
+}
+static void air_move(float dx, float dy) {
+  if (!blocked_at(player[0] + dx, player[1] + dy, player[2])) {
+    player[0] += dx;
+    player[1] += dy;
+    return;
+  }
+  if (!blocked_at(player[0] + dx, player[1], player[2]))
+    player[0] += dx;
+  if (!blocked_at(player[0], player[1] + dy, player[2]))
+    player[1] += dy;
+}
+static void start_air(float vx, float vy, int jump, uint32_t flags) {
+  grounded = 0;
+  vertical_speed = jump ? JUMP_SPEED : 0;
+  jump_speed = vertical_speed;
+  air_time = 0;
+  air_x = vx;
+  air_y = vy;
+  jumped = jump;
+  float speed = sqrtf(vx * vx + vy * vy);
+  jump_sin = speed > 1e-6f ? vy / speed : sinf(player[3]);
+  jump_cos = speed > 1e-6f ? vx / speed : cosf(player[3]);
+  movement_event(jump ? 0xbb : 0xee, flags | FALLING);
+}
+static uint32_t movement_opcode(uint32_t flags) {
+  uint32_t changed = flags ^ last_flags;
+  if (changed & 3)
+    return flags & 1 ? 0xb5 : flags & 2 ? 0xb6 : 0xb7;
+  if (changed & 12)
+    return flags & 4 ? 0xb8 : flags & 8 ? 0xb9 : 0xba;
+  if (changed & 48)
+    return flags & 16 ? 0xbc : flags & 32 ? 0xbd : 0xbe;
+  return 0xee;
 }
 uint32_t world_step(float dt) {
   if (!isfinite(dt) || dt < 0 || dt > .1f)
@@ -311,43 +457,103 @@ uint32_t world_step(float dt) {
   for (uint32_t i = 0; i < 4; i++)
     if (!isfinite(controls[i]) || fabsf(controls[i]) > 1)
       return 1;
-  float forward = controls[0], side = controls[1], turn = controls[2];
+  if (dt == 0)
+    return 0;
+  float forward = controls[0], side = controls[1], turn = controls[2],
+        norm = sqrtf(forward * forward + side * side);
   player[3] = fmodf(player[3] + turn * 2.25f * dt + 6.283185307f, 6.283185307f);
-  float c = cosf(player[3]), s = sinf(player[3]), norm = sqrtf(forward * forward + side * side);
   if (norm > 1) {
     forward /= norm;
     side /= norm;
   }
-  float speed = forward < 0 ? 4.5f : 7, dx = (forward * c - side * s) * speed * dt,
-        dy = (forward * s + side * c) * speed * dt;
-  uint32_t steps = (uint32_t)ceilf(sqrtf(dx * dx + dy * dy) / .15f);
+  float speed = forward < 0 ? 4.5f : 7, c = cosf(player[3]), s = sinf(player[3]);
+  float vx = (forward * c - side * s) * speed, vy = (forward * s + side * c) * speed;
+  uint32_t flags = (forward > 0   ? 1
+                    : forward < 0 ? 2
+                                  : 0) |
+                   (side > 0   ? 4
+                    : side < 0 ? 8
+                               : 0) |
+                   (turn > 0   ? 16
+                    : turn < 0 ? 32
+                               : 0);
+  if (dt > 0 && controls[3] > 0 && !jump_held && grounded)
+    start_air(vx, vy, 1, flags);
+  if (dt > 0)
+    jump_held = controls[3] > 0;
+  else if (controls[3] <= 0)
+    jump_held = 0;
+  uint32_t steps = (uint32_t)ceilf(dt * 120);
   if (!steps)
     steps = 1;
-  dx /= steps;
-  dy /= steps;
+  float slice = dt / steps;
   float oldx = player[0], oldy = player[1];
+  landing_time = fmaxf(0, landing_time - dt);
   for (uint32_t i = 0; i < steps; i++) {
-    if (!move_position(player[0] + dx, player[1] + dy)) {
-      if (fabsf(dx) > 1e-7f)
-        move_position(player[0] + dx, player[1]);
-      if (fabsf(dy) > 1e-7f)
-        move_position(player[0], player[1] + dy);
+    if (grounded) {
+      float dx = vx * slice, dy = vy * slice;
+      int moved = ground_move(player[0] + dx, player[1] + dy);
+      if (moved == 2)
+        start_air(vx, vy, 0, flags);
+      else if (!moved) {
+        if (fabsf(dx) > 1e-7f)
+          ground_move(player[0] + dx, player[1]);
+        if (fabsf(dy) > 1e-7f)
+          ground_move(player[0], player[1] + dy);
+      }
+    }
+    if (!grounded && slice > 0) {
+      air_move(air_x * slice, air_y * slice);
+      float next = player[2] + vertical_speed * slice - .5f * GRAVITY * slice * slice;
+      vertical_speed = fmaxf(-60.148f, vertical_speed - GRAVITY * slice);
+      air_time += slice;
+      if (next > player[2]) {
+        if (blocked_at(player[0], player[1], next)) {
+          float free_z = player[2], solid_z = next;
+          for (uint32_t k = 0; k < 10; k++) {
+            float mid = (free_z + solid_z) * .5f;
+            if (blocked_at(player[0], player[1], mid))
+              solid_z = mid;
+            else
+              free_z = mid;
+          }
+          player[2] = free_z;
+          vertical_speed = 0;
+        } else
+          player[2] = next;
+      } else {
+        float floor = ground_height(player[0], player[1], next - PLAYER_RADIUS, player[2] + .02f);
+        int contact = 0;
+        float target = isfinite(floor) ? fmaxf(floor, next) : next;
+        float supported = descend(player[0], player[1], player[2], target, &contact);
+        player[2] = supported;
+        if (contact || (isfinite(floor) && next <= floor)) {
+          grounded = 1;
+          vertical_speed = 0;
+          landing_time = .18f;
+          movement_event(0xc9, flags);
+        }
+      }
     }
   }
-  player[4] = (forward > 0   ? 1
-               : forward < 0 ? 2
-                             : 0) |
-              (side > 0   ? 4
-               : side < 0 ? 8
-                          : 0) |
-              (turn > 0   ? 16
-               : turn < 0 ? 32
-                          : 0);
+  flags |= grounded ? 0 : FALLING;
+  player[4] = flags;
+  player[7] = grounded;
   int moved = fabsf(player[0] - oldx) + fabsf(player[1] - oldy) > 1e-5f;
-  player[5] = !moved ? 0 : forward < 0 ? 13 : forward > 0 ? 5 : side > 0 ? 11 : 12;
-  player[6] =
-      player[3] + (forward && side ? atan2f(side, fabsf(forward)) * (forward < 0 ? -1 : 1) : 0);
-  return 0;
+  player[5] = !grounded          ? jumped && air_time < .18f ? 37
+                                   : vertical_speed < -3     ? 40
+                                                             : 38
+              : moved            ? forward < 0 ? 13 : 5
+              : landing_time > 0 ? 39
+                                 : 0;
+  /* Feet follow the travel direction. Network/body-facing remains independent. */
+  float travel = side || forward ? atan2f(side, fabsf(forward)) : 0;
+  float heading = player[3] + travel * (forward < 0 ? -1 : 1);
+  float difference = atan2f(sinf(heading - player[6]), cosf(heading - player[6]));
+  player[6] += difference * fminf(1, dt * 14);
+  if (flags != last_flags || (uint32_t)(move_clock - last_sent) >= 500)
+    movement_event(movement_opcode(flags), flags);
+  return move_overflow ? 2 : 0;
 }
 uint32_t world_follow(float yaw, float distance, float pitch) {
   if (!isfinite(yaw) || !isfinite(distance) || !isfinite(pitch) || distance < 2 || distance > 50)

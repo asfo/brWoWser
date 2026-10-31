@@ -1,4 +1,4 @@
-import { playMedia, cancelPendingMedia } from '../media/autoplay.mjs';
+import { playMedia, cancelPendingMedia, resumeContext } from '../media/autoplay.mjs';
 // Browser boundary, not a reconstruction of FMOD mixing or default fades.
 export function createMediaPlayer(element, { defaultFadeSeconds = 0 } = {}) {
   if (!Number.isFinite(defaultFadeSeconds) || defaultFadeSeconds < 0 || defaultFadeSeconds > 60)
@@ -32,7 +32,7 @@ export function createMediaPlayer(element, { defaultFadeSeconds = 0 } = {}) {
       const seconds = fade(fadeSeconds);
       ensure();
       const mine = ++generation;
-      if (context.state !== 'running') context.resume().catch(() => {});
+      resumeContext(context);
       if (mine !== generation) return { cancelled: true };
       const now = context.currentTime;
       gain.gain.cancelScheduledValues(now);

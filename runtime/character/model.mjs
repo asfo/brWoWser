@@ -437,7 +437,7 @@ export async function loadCharacterModel({
     motionStart = 0;
   const movementClips = new Map();
   if (appearance?.worldPreview && pose) {
-    for (const animation of [5, 11, 12, 13]) {
+    for (const animation of [5, 13, 37, 38, 39, 40]) {
       try {
         const clip = await idleModel(
           model,
@@ -495,7 +495,8 @@ export async function loadCharacterModel({
     },
     motion(value, elapsedMs = 0) {
       const animation = typeof value === 'boolean' ? (value ? 5 : 0) : value;
-      if (![0, 5, 11, 12, 13].includes(animation)) throw Error('Unsupported locomotion animation');
+      if (![0, 5, 13, 37, 38, 39, 40].includes(animation))
+        throw Error('Unsupported locomotion animation');
       if (moving !== animation) {
         moving = animation;
         motionStart = Math.floor(elapsedMs);

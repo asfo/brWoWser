@@ -253,11 +253,20 @@ export function connectWorldSession({
             worldEntry = { ...worldEntry, cinematic: 0, cinematicStarted: false };
           } else if (action.operation === 'movement') {
             if (worldEntry.phase !== 'world' || worldEntry.cinematic) return;
-            const allowed = [0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbe, 0xee];
+            const allowed = [
+              0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xc9, 0xee,
+            ];
             if (!allowed.includes(action.opcode)) throw Error('Unsupported movement operation');
             send(
               action.opcode,
-              movementPacket(worldEntry.character.guid, action.position, action.flags, action.time),
+              movementPacket(
+                worldEntry.character.guid,
+                action.position,
+                action.flags,
+                action.time,
+                action.fallTime,
+                action.jump,
+              ),
             );
           } else throw Error('Unsupported world action');
         },

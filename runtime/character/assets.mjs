@@ -5,11 +5,19 @@ export async function createCharacterAssetSource(files, config) {
     type: 'module',
   });
   const pending = new Map();
+  let audioWorker, audioReady;
+  const audioPending = new Map();
   let serial = 0,
     closed = false;
   function fail(error) {
     closed = true;
     worker.terminate();
+    audioWorker?.terminate();
+    for (const job of audioPending.values()) {
+      clearTimeout(job.timer);
+      job.reject(error);
+    }
+    audioPending.clear();
     for (const job of pending.values()) {
       clearTimeout(job.timer);
       job.reject(error);
@@ -39,6 +47,45 @@ export async function createCharacterAssetSource(files, config) {
     fail(error);
     throw error;
   }
+  // Sound reads have their own decompression queue so terrain streaming cannot
+  // delay playback. Keep the worker lazy until a world actually needs audio.
+  function audioCall(message) {
+    if (closed) return Promise.reject(Error('Character asset source is closed'));
+    return new Promise((resolve, reject) => {
+      const id = ++serial;
+      const timer = setTimeout(() => {
+        audioPending.delete(id);
+        reject(Error('World audio read timeout: ' + (message.path || 'mount initialization')));
+      }, 60000);
+      audioPending.set(id, { resolve, reject, timer });
+      audioWorker.postMessage({ id, ...message });
+    });
+  }
+  async function readAudio(path) {
+    if (closed) throw Error('Character asset source is closed');
+    if (!audioReady) {
+      audioWorker = new Worker(new URL('../../app/client/audio-worker.mjs', import.meta.url), {
+        type: 'module',
+      });
+      audioWorker.onmessage = ({ data }) => {
+        const job = audioPending.get(data.id);
+        if (!job) return;
+        audioPending.delete(data.id);
+        clearTimeout(job.timer);
+        data.error ? job.reject(Error(data.error)) : job.resolve(data.result);
+      };
+      audioWorker.onerror = (event) => {
+        for (const job of audioPending.values()) {
+          clearTimeout(job.timer);
+          job.reject(Error(event.message || 'World audio worker failed'));
+        }
+        audioPending.clear();
+      };
+      audioReady = audioCall({ kind: 'init', files, ...config });
+    }
+    await audioReady;
+    return new Uint8Array((await audioCall({ kind: 'bytes', path })).bytes);
+  }
   const cache = new Map();
   function asset(kind, path) {
     if (
@@ -58,6 +105,7 @@ export async function createCharacterAssetSource(files, config) {
     return cache.get(key);
   }
   return {
+    readAudio,
     readAsset: async (path) => new Uint8Array((await asset('bytes', path)).bytes),
     decodeTexture: (path) => asset('texture', path),
     world: (operation, data = {}) => call({ kind: 'world', operation, ...data }),

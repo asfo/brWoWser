@@ -39,6 +39,10 @@ async function worldOperation(data) {
       };
     });
   };
+  if (data.operation === 'movement-begin') {
+    world.world_movement_begin();
+    return {};
+  }
   if (data.operation === 'audio-init') {
     for (const [kind, name] of [
       'AreaTable',
@@ -257,6 +261,7 @@ async function worldOperation(data) {
       )
         throw Error('Invalid world controls');
       floats(world.world_controls(), 7).set(data.controls);
+      world.world_movement_clock(data.platformTime >>> 0);
       if (world.world_step(data.elapsed)) throw Error('World movement rejected');
       if (world.world_orbit()) throw Error('World camera rejected');
     }
@@ -267,9 +272,29 @@ async function worldOperation(data) {
     world.world_cull_decor();
     world.world_collision_cull();
     world.world_audio_sample(data.time * 0.5);
+    const movement = [];
+    while (world.world_movement_next() === 0) {
+      const pointer = world.world_movement_output(),
+        integers = words(pointer, 4),
+        numbers = floats(pointer + 16, 8);
+      movement.push({
+        opcode: integers[0],
+        flags: integers[1],
+        time: integers[2],
+        fallTime: integers[3],
+        position: Array.from(numbers.subarray(0, 4)),
+        jump: {
+          verticalSpeed: numbers[4],
+          sinAngle: numbers[5],
+          cosAngle: numbers[6],
+          horizontalSpeed: numbers[7],
+        },
+      });
+    }
     const skyStatus = world.world_environment(data.map, data.time, data.globalMs);
     return {
       player: floats(world.world_player(), 8).slice(),
+      movement,
       area: world.world_area(),
       audio: audioState(),
       camera: floats(world.world_camera(), 10).slice(),

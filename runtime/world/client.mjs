@@ -31,8 +31,6 @@ export async function createWorldClient({
     cinematicMs = 0,
     cinematicBegun = false,
     confirmedSkip = false,
-    movementAt = 0,
-    lastFlags = 0,
     introductionPending = null,
     introductionId = 0,
     narrationBlocked = false,
@@ -51,7 +49,8 @@ export async function createWorldClient({
     decoration = new Map(),
     collisionJobs = new Map(),
     loadQueue = [],
-    listeners = [];
+    listeners = [],
+    movementEvents = [];
   const started = performance.now();
   let timeAnchor = entry.gameTime ?? 720,
     timeReceived = entry.timeReceived ?? performance.timeOrigin + performance.now();
@@ -328,7 +327,7 @@ export async function createWorldClient({
       Number(keys.has('KeyQ')) - Number(keys.has('KeyE')),
       Number(keys.has('KeyA') || keys.has('ArrowLeft')) -
         Number(keys.has('KeyD') || keys.has('ArrowRight')),
-      0,
+      Number(keys.has('Space')),
       inputX,
       inputY,
       inputZoom,
@@ -342,10 +341,13 @@ export async function createWorldClient({
         time:
           (timeAnchor + (performance.timeOrigin + performance.now() - timeReceived) / 60000) * 2,
         globalMs: performance.now() - started,
+        platformTime: Math.floor(performance.now()),
       };
       if (cinematic) data.cinematicMs = Math.min(cinematic.duration, Math.floor(cinematicMs));
       inputX = inputY = inputZoom = 0;
-      return source.world('sample', data);
+      const state = await source.world('sample', data);
+      movementEvents.push(...state.movement);
+      return state;
     }
     function visibleObjects(state, tile, field = 'objectVisibility') {
       let mask;
@@ -449,6 +451,7 @@ export async function createWorldClient({
     await prepareCollision(await sample(0));
     if (disposed || !isCurrent()) throw Error('World loading cancelled');
     lastCompleteState = warmed;
+    await source.world('movement-begin');
     await send({ operation: 'ready' });
     loadMilliseconds = Math.round(performance.now() - started);
     let orbiting = false;
@@ -473,6 +476,7 @@ export async function createWorldClient({
             'KeyD',
             'KeyQ',
             'KeyE',
+            'Space',
             'ArrowUp',
             'ArrowDown',
             'ArrowLeft',
@@ -644,35 +648,9 @@ export async function createWorldClient({
           eye: state.view.subarray(64, 67),
           globalMs: performance.now() - started,
         };
-        const now = performance.now(),
-          flags = state.player[4];
-        if (!cinematic && !modal && (flags !== lastFlags || now - movementAt >= 500)) {
-          const opcode =
-            flags === lastFlags
-              ? 0xee
-              : !flags
-                ? 0xb7
-                : flags & 1
-                  ? 0xb5
-                  : flags & 2
-                    ? 0xb6
-                    : flags & 4
-                      ? 0xb8
-                      : flags & 8
-                        ? 0xb9
-                        : flags & 16
-                          ? 0xbb
-                          : 0xbc;
-          await send({
-            operation: 'movement',
-            opcode,
-            flags,
-            position: Array.from(state.player.subarray(0, 4)),
-            time: Math.floor(now),
-          });
-          lastFlags = flags;
-          movementAt = now;
-        }
+        if (!cinematic && !modal)
+          while (movementEvents.length)
+            await send({ operation: 'movement', ...movementEvents.shift() });
         await new Promise((resolve) => requestAnimationFrame(resolve));
         if (disposed || !isCurrent()) return;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -720,7 +698,9 @@ export async function createWorldClient({
           collision_triangles: state.collisionState[3],
           collision_instances: state.collisionState[4],
           locomotion: state.player[5],
+          grounded: !!state.player[7],
           area: state.area,
+          audioPlayback: zoneAudio?.status(),
           audio: state.audio.map(({ id, path }) => ({ id, path })),
           queued_assets: loadQueue.length,
           phase: cinematic ? 'cinematic' : 'world',
