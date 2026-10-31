@@ -93,6 +93,7 @@ export async function readCharacterMetadata(readAsset, locale) {
     result.classes.push({
       id,
       name: localized(classes, row, 4),
+      femaleName: localized(classes, row, 21) || localized(classes, row, 4),
       token: classTokens[id],
       expansion: classes.u(row, 59),
       tank: [1, 2, 6, 11].includes(id),

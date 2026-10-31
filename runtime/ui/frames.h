@@ -89,6 +89,8 @@ const char *bw_ui_runtime_protected_error(const BwUiRuntime *runtime);
  * Pixel upload, draw lifecycle and native path/creation semantics remain separate. */
 uint32_t bw_ui_runtime_texture_asset(BwUiRuntime *runtime, const char *path, uint32_t width,
                                      uint32_t height);
+void bw_ui_runtime_templates(BwUiRuntime *runtime, int enabled);
+void bw_ui_runtime_defer_lifecycle(BwUiRuntime *runtime);
 void bw_ui_runtime_free(BwUiRuntime *runtime);
 uint32_t bw_ui_runtime_register(BwUiRuntime *runtime);
 uint32_t bw_ui_runtime_viewport(BwUiRuntime *runtime, double width, double height);

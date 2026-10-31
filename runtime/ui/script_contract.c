@@ -119,6 +119,7 @@ uint32_t bw_ui_resolve_script(uint32_t type, const char *name, uint32_t length,
   case BW_UI_SCROLLFRAME:
     family = 3;
     break;
+  case BW_UI_STATUSBAR:
   case BW_UI_SLIDER:
     family = 4;
     break;

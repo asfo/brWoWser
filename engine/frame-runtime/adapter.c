@@ -2,6 +2,7 @@
 #include "document.h"
 #include "loader.h"
 #include "glue_state.h"
+#include "world_api.h"
 #include <stdint.h>
 #include <string.h>
 #define CAPACITY 1048576
@@ -43,6 +44,25 @@ uint32_t frame_document(uint32_t length) {
   if (d->error)
     return d->error;
   return bw_ui_runtime_document(runtime, d->root);
+}
+uint32_t world_ui_init(void) {
+  return bw_world_ui_register(bw_lua_state());
+}
+uint32_t world_ui_player(uint32_t low, uint32_t high, uint32_t race, uint32_t class_id,
+                         uint32_t gender, uint32_t level) {
+  return bw_world_ui_player(low, high, race, class_id, gender, level);
+}
+uint32_t world_ui_text(uint32_t field, uint32_t length) {
+  return length > CAPACITY ? 1 : bw_world_ui_text(field, input, length);
+}
+uint32_t world_ui_clock(double seconds) {
+  return bw_world_ui_clock(seconds);
+}
+void frame_template_mode(uint32_t enabled) {
+  bw_ui_runtime_templates(runtime, enabled);
+}
+void frame_defer_lifecycle(void) {
+  bw_ui_runtime_defer_lifecycle(runtime);
 }
 uint32_t frame_count(void) {
   return bw_ui_runtime_count(runtime);

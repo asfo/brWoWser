@@ -22,3 +22,11 @@ The character interface queues Enter World in C. The network session sends the s
 `runtime/world/world.c`, built by `engine/world/`, runs in the asset worker. It decodes ADT meshes, alpha maps and terrain holes; reads static WMO exterior groups and M2 decoration; converts instance transforms; evaluates camera splines; integrates ground movement; and builds placement/view matrices and terrain frustum masks. The browser uploads the resulting arrays through WebGL and forwards movement to the session worker.
 
 Introductions resolve their sequence, camera origin/model and narration from owner-local DBC/MPQ resources. The browser supplies the audio playback clock; C/WASM samples the camera. Completion and confirmed skipping notify the game server. A nine-tile outdoor neighborhood and bounded caches form the initial streaming scope. Server object-update reconstruction and the full in-game interface are separate unfinished milestones.
+
+## In-game interface
+
+`runtime/ui/framexml_sources.mjs` discovers a bounded set of original FrameXML resources and includes through the existing owner-local asset reader. It records the full TOC inventory and verifies resource hashes again before sealing the C loader. It does not interpret layout or rewrite the original sources.
+
+`app/client/world_ui_worker.mjs` runs a separate VM through `runtime/ui/world_session.mjs`. Native player APIs are implemented in `world_api.c`, using roster identity and localized client metadata. The first profile loads original player/main-menu artwork with general component lifecycles deferred. Original Lua definitions and callbacks remain available for incremental activation as their native APIs become supported. Unknown gameplay values are not filled with invented health, XP, spells or inventory.
+
+The existing C frame runtime now admits `StatusBar` and the frame semantics of `WorldFrame`. Layout, fill geometry, glyph coverage and draw order stay in WASM. `world_hud.mjs` handles asset I/O, worker messages, texture upload and canvas composition; it does not recreate the HUD in HTML. A world-UI import error is reported separately and does not disconnect or discard a working world renderer.

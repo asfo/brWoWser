@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-10-29.
+Updated: 2026-10-30.
 
 brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and initial outdoor-world flow. An initial outdoor world-entry implementation is now available for manual validation; general in-world gameplay is not implemented.
 
@@ -35,6 +35,14 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - Sky color bands and their spatial/time selection run in C/WASM from Light tables; server game time anchors the clock.
 - World drawing is presented at an animation-frame boundary. Input/audio acknowledgements no longer present UI-only frames over the world.
 - Builds and bounded owner-resource decoding have been inspected. The latest visual changes, load times, deletion controls and frame stability require manual validation.
+
+## Initial in-game FrameXML shell
+
+- A dedicated world-UI worker owns a separate C/Lua VM from the login session. It reads the owner-local `FrameXML.toc` and a bounded dependency closure; original sources stay outside Git.
+- The first profile loads 32 original Lua/XML resources, fonts and textures for `WorldFrame`, `UIParent`, the player-frame artwork and the lower main-menu artwork. A bounded local source import produced 253 objects and 26 draw commands without geometry/text issues; browser appearance remains unverified.
+- C/WASM owns frame composition, font rasterization, StatusBar geometry and the initial unit identity APIs. Name, level, race, class, sex and GUID come from the authenticated roster and client metadata.
+- The shell appears after the introduction ends or is skipped, inside the existing canvas. It remains hidden during the introduction. Loading failures are isolated from the world connection and exposed through `window.worldUIStatus`.
+- General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, unit state, portrait generation, action buttons, chat and menu interaction remain unfinished.
 
 ## Current review
 

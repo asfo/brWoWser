@@ -1,3 +1,4 @@
+import { createWorldHUD } from '../../runtime/ui/world_hud.mjs';
 import { createGlyphAtlas } from '../../runtime/ui/glyph_atlas.mjs';
 import { createSoftwareCursor } from '../../runtime/ui/software_cursor.mjs';
 import { createCinematicResolver } from '../../runtime/movie/catalogue.mjs';
@@ -207,6 +208,7 @@ const launch = (event) => {
       keyboardConnection;
     let characterSourcePromise, characterCatalogPromise, characterPreview, characterBackground;
     let worldClient,
+      worldHUD,
       worldKey = '',
       worldGeneration = 0;
     const ensureCharacterSource = () => {
@@ -231,6 +233,8 @@ const launch = (event) => {
           worldKey = '';
           worldClient?.dispose();
           worldClient = null;
+          worldHUD?.dispose();
+          worldHUD = null;
         }
         return;
       }
@@ -240,6 +244,8 @@ const launch = (event) => {
           worldKey = '';
           worldClient?.dispose();
           worldClient = null;
+          worldHUD?.dispose();
+          worldHUD = null;
         }
         window.worldStatus = { phase: 'error', message: entry.error };
         return;
@@ -254,6 +260,8 @@ const launch = (event) => {
       if (key === worldKey) return;
       worldKey = key;
       const generation = ++worldGeneration;
+      worldHUD?.dispose();
+      worldHUD = null;
       ensureCharacterSource();
       disposeCharacter();
       disposeBackground();
@@ -286,6 +294,43 @@ const launch = (event) => {
         worldClient = client;
         client.sync(window.uiInputState?.world_entry || entry);
         window.worldStatus = { phase: 'ready' };
+        // UI source import is independent of terrain streaming and cannot abort
+        // or disconnect an otherwise usable world session.
+        const hudWidth = viewport.logicalWidth,
+          hudHeight = viewport.logicalHeight;
+        createWorldHUD({
+          gl,
+          source,
+          wasm: frameArgs.wasm,
+          compat: new Uint8Array(await originalFiles[config.fixture.compat].arrayBuffer()),
+          metadata: config.characterMetadata,
+          settings: config.fixture.profile.defaults,
+          player: entry.character,
+          locale: config.locale,
+          width: hudWidth,
+          height: hudHeight,
+          textureCache: uiTextureCache,
+          glyphAtlas,
+          isCurrent: () => generation === worldGeneration,
+          onStatus: (status) => {
+            if (generation === worldGeneration) window.worldUIStatus = status;
+          },
+        })
+          .then((hud) => {
+            if (generation !== worldGeneration) hud.dispose();
+            else {
+              worldHUD = hud;
+              if (hudWidth !== viewport.logicalWidth || hudHeight !== viewport.logicalHeight)
+                hud
+                  .resize(viewport.logicalWidth, viewport.logicalHeight)
+                  .catch((error) => console.warn('World UI: ' + error.message));
+            }
+          })
+          .catch((error) => {
+            if (generation !== worldGeneration) return;
+            window.worldUIStatus = { phase: 'error', message: error.message };
+            console.warn('World UI: ' + error.message);
+          });
       })().catch((error) => {
         if (generation !== worldGeneration) return;
         window.worldStatus = { phase: 'error', message: error.message };
@@ -476,7 +521,9 @@ const launch = (event) => {
       () => {
         disposeCharacter();
         worldGeneration++;
+        worldGeneration++;
         worldClient?.dispose();
+        worldHUD?.dispose();
         disposeBackground();
         characterGlow?.dispose();
         characterSourcePromise?.then((source) => source.dispose()).catch(() => {});
@@ -820,6 +867,9 @@ const launch = (event) => {
               resizing = false;
               viewport = gameViewport(innerWidth, innerHeight, devicePixelRatio);
               applyGameViewport(canvas, viewport);
+              worldHUD?.resize(viewport.logicalWidth, viewport.logicalHeight).catch((error) => {
+                console.warn('World UI: ' + error.message);
+              });
               applyInput({
                 kind: 9,
                 width: viewport.logicalWidth,
@@ -974,6 +1024,8 @@ const launch = (event) => {
                 measurePixels: false,
               });
             }
+            if (window.worldStatus?.phase === 'world' && window.uiInputState?.world_entry)
+              worldHUD?.draw();
             uiRenderer.draw();
             softwareCursor?.draw();
             if (!creditsScreen && !window.uiInputState?.world_entry)

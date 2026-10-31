@@ -12,7 +12,8 @@ enum BwUiType {
   BW_UI_SIMPLEHTML,
   BW_UI_MODEL,
   BW_UI_MODELFFX,
-  BW_UI_MOVIEFRAME
+  BW_UI_MOVIEFRAME,
+  BW_UI_STATUSBAR = 14
 };
 enum BwUiScriptStatus {
   BW_UI_SCRIPT_OK = 0,

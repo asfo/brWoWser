@@ -62,7 +62,7 @@ struct Object {
   double scroll_x, scroll_y, scroll_range_x, scroll_range_y;
   float minimum, range, value, step;
   int range_initialized, value_initialized, slider_vertical;
-  Object *thumb;
+  Object *thumb, *bar_texture;
   Object *html_fonts[4];
   Object *font_object, *normal_font, *highlight_font, *disabled_font, *button_text;
   Object *button_textures[6];
@@ -121,11 +121,11 @@ struct BwUiRuntime {
   char error[1024];
   uint32_t last_input_target;
   uint32_t load_depth;
-  int auto_load;
+  int auto_load, deferred_lifecycle, template_only;
   uint32_t protected_failures;
   char protected_error[1024];
   BwUiRuntime **handle;
-  int handle_reference, error_handler, metatables[14];
+  int handle_reference, error_handler, metatables[15];
   BwUiXmlDispatch dispatch;
   void *dispatch_context;
   int options_readonly;
@@ -538,11 +538,18 @@ static Object *owner(lua_State *L, int index) {
     luaL_error(L, "copied frame token");
   return o;
 }
+static int frame_type(uint32_t type) {
+  return type <= 10 || type == BW_UI_STATUSBAR;
+}
 static const char *type_names[] = {
     "Frame", "Button",   "CheckButton", "EditBox", "ScrollFrame", "Slider", "SimpleHTML",
-    "Model", "ModelFFX", "MovieFrame",  "Texture", "FontString",  "Font"};
+    "Model", "ModelFFX", "MovieFrame",  "Texture", "FontString",  "Font",   "StatusBar"};
 static uint32_t type_id(const char *s) {
-  for (uint32_t i = 0; i < 13; i++) {
+  /* WorldFrame has frame semantics here; the outdoor WASM renderer supplies
+   * its scene behind the UI instead of creating another browser surface. */
+  if (!strcmp(s, "WorldFrame"))
+    return BW_UI_FRAME;
+  for (uint32_t i = 0; i < 14; i++) {
     const char *a = s, *b = type_names[i];
     while (*a && *b) {
       char x = *a++, y = *b++;
@@ -579,6 +586,8 @@ static uint32_t event_id(Object *o, const char *event) {
   return c.event_id;
 }
 static int invoke(Object *o, const char *event) {
+  if (o->runtime->deferred_lifecycle && !o->loaded)
+    return 0;
   uint32_t id = event_id(o, event);
   if (!id)
     return 0;
@@ -640,7 +649,7 @@ static int set_stratum(Object *o, int value, uint32_t depth) {
   o->frame_stratum = value;
   for (uint32_t i = 0; i < o->runtime->count; i++) {
     Object *c = o->runtime->objects[i];
-    if (c->parent == o && c->type <= 10 && set_stratum(c, value, depth + 1))
+    if (c->parent == o && frame_type(c->type) && set_stratum(c, value, depth + 1))
       return 1;
   }
   return 0;
@@ -658,7 +667,7 @@ static int set_level(Object *o, int value, uint32_t depth) {
   o->frame_level += (int)difference;
   for (uint32_t i = 0; i < o->runtime->count; i++) {
     Object *c = o->runtime->objects[i];
-    if (c->parent == o && c->type <= 10 && c->frame_stratum == o->frame_stratum) {
+    if (c->parent == o && frame_type(c->type) && c->frame_stratum == o->frame_stratum) {
       int64_t next = (int64_t)c->frame_level + difference;
       if (next > 2147483647)
         return fail(o->runtime, "frame level capacity");
@@ -1182,6 +1191,8 @@ static int slider_value(Object *o, float requested) {
     return 0;
   o->value = v;
   o->value_initialized = 1;
+  if (o->runtime->deferred_lifecycle && !o->loaded)
+    return 0;
   uint32_t id = event_id(o, "OnValueChanged");
   if (!id)
     return 0;
@@ -1195,7 +1206,7 @@ static int attach_scroll(Object *o, Object *c) {
   for (Object *p = o; p; p = p->parent)
     if (p == c)
       return fail(o->runtime, "scroll child cycle");
-  if (c->type > 10)
+  if (!frame_type(c->type))
     return fail(o->runtime, "scroll child must be frame");
   if (o->scroll_child && o->scroll_child != c) {
     o->scroll_child->parent = NULL;
@@ -1242,7 +1253,7 @@ static int method(lua_State *L) {
     const char *region_type = !strcmp(m, "CreateTexture") ? "Texture" : "FontString";
     if (!strcmp(m, "CreateTexture") && lua_gettop(L) > 4)
       return luaL_error(L, "texture sublayer branch not reconstructed");
-    if (o->type > 10)
+    if (!frame_type(o->type))
       return luaL_error(L, "region owner must be a frame");
     const char *name = luaL_optstring(L, 2, "");
     const char *layer = luaL_optstring(L, 3, "ARTWORK");
@@ -1317,7 +1328,7 @@ static int method(lua_State *L) {
     int level = top->frame_level;
     for (uint32_t i = 0; i < r->count; i++) {
       Object *peer = r->objects[i];
-      if (peer->type > 10 || peer->frame_stratum != top->frame_stratum || !visible(peer))
+      if (!frame_type(peer->type) || peer->frame_stratum != top->frame_stratum || !visible(peer))
         continue;
       Object *branch = peer;
       while (branch && branch != top)
@@ -1511,7 +1522,7 @@ static int method(lua_State *L) {
     if (index >= 4)
       return luaL_error(L, "model lighting capacity");
     float values[13];
-    for (uint32_t i = 0; i < 13; i++) {
+    for (uint32_t i = 0; i < 14; i++) {
       double value = luaL_checknumber(L, 3 + i);
       if (!isfinite(value) || fabs(value) > 1000000)
         return luaL_error(L, "invalid model lighting parameter");
@@ -1920,6 +1931,44 @@ static int method(lua_State *L) {
       lua_pushnil(L);
     return 1;
   }
+  if (!strcmp(m, "GetStatusBarTexture")) {
+    if (o->bar_texture)
+      lua_rawgeti(L, LUA_REGISTRYINDEX, o->bar_texture->reference);
+    else
+      lua_pushnil(L);
+    return 1;
+  }
+  if (!strcmp(m, "SetStatusBarTexture")) {
+    const char *path = luaL_checkstring(L, 2);
+    if (!o->bar_texture) {
+      o->bar_texture = create(r, "Texture", NULL, o);
+      if (!o->bar_texture)
+        return luaL_error(L, "%s", r->error);
+      all_points(o->bar_texture, o);
+    }
+    char *replacement = copy(path);
+    if (!replacement)
+      return luaL_error(L, "status bar texture allocation");
+    free(o->bar_texture->texture_file);
+    o->bar_texture->texture_file = replacement;
+    return 0;
+  }
+  if (!strcmp(m, "SetStatusBarColor") || !strcmp(m, "GetStatusBarColor")) {
+    if (!o->bar_texture)
+      return luaL_error(L, "status bar texture is unavailable");
+    if (!strcmp(m, "GetStatusBarColor")) {
+      for (int i = 0; i < 4; i++)
+        lua_pushnumber(L, o->bar_texture->vertex_color[i] / 255.);
+      return 4;
+    }
+    for (int i = 0; i < 4; i++) {
+      double value = luaL_optnumber(L, i + 2, 1);
+      if (!isfinite(value) || value < 0 || value > 1)
+        return luaL_error(L, "invalid status bar color");
+      o->bar_texture->vertex_color[i] = (uint8_t)(value * 255 + .5);
+    }
+    return 0;
+  }
   if (!strcmp(m, "GetValue") || !strcmp(m, "GetValueStep")) {
     lua_pushnumber(L, !strcmp(m, "GetValue") ? o->value : o->step);
     return 1;
@@ -2223,7 +2272,7 @@ static int method(lua_State *L) {
   if (!strcmp(m, "GetNumRegions")) {
     uint32_t count = 0;
     for (uint32_t i = 0; i < r->count; i++)
-      if (r->objects[i]->parent == o && r->objects[i]->type > 10)
+      if (r->objects[i]->parent == o && !frame_type(r->objects[i]->type))
         count++;
     lua_pushnumber(L, count);
     return 1;
@@ -2232,7 +2281,7 @@ static int method(lua_State *L) {
     int count = 0;
     for (uint32_t i = 0; i < r->count; i++) {
       Object *c = r->objects[i];
-      if (c->parent == o && ((c->type <= 10) == !strcmp(m, "GetChildren"))) {
+      if (c->parent == o && ((frame_type(c->type)) == !strcmp(m, "GetChildren"))) {
         if (!lua_checkstack(L, 1))
           return luaL_error(L, "child result capacity");
         lua_rawgeti(L, LUA_REGISTRYINDEX, c->reference);
@@ -2329,7 +2378,7 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
   o->alpha = o->scale = 1;
   o->parent = parent;
   o->model_scale = 1;
-  o->slider_vertical = 1;
+  o->slider_vertical = kind != BW_UI_STATUSBAR;
   o->frame_stratum = parent ? parent->frame_stratum : 3;
   o->frame_level = parent ? (parent->frame_level < 127 ? parent->frame_level + 1 : 128) : 0;
   strcpy(o->justify_h, kind == 12 ? "CENTER" : "LEFT");
@@ -2340,7 +2389,7 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
   memset(o->border_color, 255, 4);
   memset(o->vertex_color, 255, 4);
   snprintf(o->name, sizeof(o->name), "%s", name ? name : "");
-  snprintf(o->tag, sizeof(o->tag), "%s", type_names[kind - 1]);
+  snprintf(o->tag, sizeof(o->tag), "%s", !strcmp(type, "WorldFrame") ? type : type_names[kind - 1]);
   r->objects[r->count++] = o;
   lua_State *L = r->L;
   lua_newtable(L);
@@ -2426,6 +2475,10 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
                            "GetHorizontalScroll",
                            "SetVerticalScroll",
                            "SetHorizontalScroll",
+                           "GetStatusBarTexture",
+                           "SetStatusBarTexture",
+                           "SetStatusBarColor",
+                           "GetStatusBarColor",
                            "GetValue",
                            "SetValue",
                            "GetValueStep",
@@ -2501,7 +2554,9 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
         continue;
       if (!strcmp(*m, "GetEffectiveScale") && kind == 12)
         continue;
-      if (!strcmp(*m, "CreateTexture") && kind > 10)
+      if (!strcmp(*m, "CreateTexture") && !frame_type(kind))
+        continue;
+      if (strstr(*m, "StatusBar") && kind != BW_UI_STATUSBAR)
         continue;
       if ((!strcmp(*m, "GetTexture") || !strcmp(*m, "SetTexture")) && kind != 11)
         continue;
@@ -2517,7 +2572,7 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
                        !strcmp(*m, "GetNumRegions") || !strcmp(*m, "HasScript") ||
                        !strcmp(*m, "GetScript") || !strcmp(*m, "SetScript") ||
                        strstr(*m, "Event") || strstr(*m, "Backdrop");
-      if (frame_only && kind > 10)
+      if (frame_only && !frame_type(kind))
         continue;
       if ((!strcmp(*m, "SetModel") || !strcmp(*m, "SetCamera") || !strcmp(*m, "SetSequence") ||
            !strcmp(*m, "SetSequenceTime") || !strcmp(*m, "SetModelScale") ||
@@ -2555,7 +2610,7 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
         continue;
       if (strstr(*m, "Scroll") && kind != BW_UI_SCROLLFRAME)
         continue;
-      if ((strstr(*m, "Value")) && kind != BW_UI_SLIDER)
+      if ((strstr(*m, "Value")) && kind != BW_UI_SLIDER && kind != BW_UI_STATUSBAR)
         continue;
       if (!strcmp(*m, "RegisterForClicks") && kind != 2 && kind != 3)
         continue;
@@ -2779,7 +2834,7 @@ static int instantiate(BwUiRuntime *r, const BwXmlNode *raw, Object *parent, uin
     }
     lua_pop(r->L, 1);
   }
-  if (o->type == BW_UI_SLIDER) {
+  if (o->type == BW_UI_SLIDER || o->type == BW_UI_STATUSBAR) {
     const char *axis = attr(n, "orientation");
     if (axis) {
       if (strcmp(axis, "VERTICAL") && strcmp(axis, "HORIZONTAL"))
@@ -2940,6 +2995,20 @@ static int instantiate(BwUiRuntime *r, const BwXmlNode *raw, Object *parent, uin
       } else if (tag(c, "DisabledCheckedTexture")) {
         o->button_textures[5] = r->objects[start];
         r->objects[start]->draw_layer = 3;
+      }
+      if (tag(c, "BarTexture") && o->type == BW_UI_STATUSBAR) {
+        o->bar_texture = r->objects[start];
+        o->bar_texture->draw_layer = 3;
+        const BwXmlNode *color = child(n, "BarColor");
+        if (color) {
+          const char *keys[] = {"r", "g", "b", "a"};
+          for (uint32_t channel = 0; channel < 4; channel++) {
+            double value = 1;
+            if (number(r, attr(color, keys[channel]), &value) || value < 0 || value > 1)
+              return fail(r, "invalid status bar color");
+            o->bar_texture->vertex_color[channel] = (uint8_t)(value * 255 + .5);
+          }
+        }
       }
       if (tag(c, "ThumbTexture") && o->type == BW_UI_SLIDER)
         o->thumb = r->objects[start];
@@ -3136,7 +3205,7 @@ static int create_frame(lua_State *L) {
   Object *parent = lua_isnoneornil(L, 3) ? NULL : owner(L, 3);
   if (strlen(name) >= MAX_NAME)
     return luaL_error(L, "frame name capacity");
-  if (type_id(type) > 10 || !type_id(type))
+  if (!frame_type(type_id(type)) || !type_id(type))
     return luaL_error(L, "invalid frame type");
   if (!lua_isnoneornil(L, 4) && *luaL_checkstring(L, 4)) {
     const char *templates = lua_tostring(L, 4);
@@ -3161,7 +3230,7 @@ static int enumerate(lua_State *L) {
   if (!lua_isnoneornil(L, 1))
     start = owner(L, 1)->id + 1;
   for (uint32_t i = start; i < r->count; i++)
-    if (r->objects[i]->type <= 10) {
+    if (frame_type(r->objects[i]->type)) {
       lua_rawgeti(L, LUA_REGISTRYINDEX, r->objects[i]->reference);
       return 1;
     }
@@ -3406,7 +3475,7 @@ uint32_t bw_ui_runtime_document(BwUiRuntime *r, const BwXmlNode *root) {
       d->node = n;
       if (tag(n, "Font") && instantiate(r, n, NULL, 0))
         return 1;
-    } else if (instantiate(r, n, NULL, 0))
+    } else if (!r->template_only && instantiate(r, n, NULL, 0))
       return 1;
   }
   return 0;
@@ -3424,6 +3493,16 @@ static int load_object(Object *o, uint32_t depth) {
       return 1;
   }
   return 0;
+}
+void bw_ui_runtime_templates(BwUiRuntime *r, int enabled) {
+  if (r)
+    r->template_only = enabled != 0;
+}
+void bw_ui_runtime_defer_lifecycle(BwUiRuntime *r) {
+  if (r) {
+    r->auto_load = 0;
+    r->deferred_lifecycle = 1;
+  }
 }
 void bw_ui_runtime_auto_load(BwUiRuntime *r, int enabled) {
   if (r)
@@ -3499,7 +3578,7 @@ void bw_ui_runtime_free(BwUiRuntime *r) {
   }
   if (r->error_handler > 0)
     luaL_unref(r->L, LUA_REGISTRYINDEX, r->error_handler);
-  for (int i = 0; i < 14; i++)
+  for (int i = 0; i < 15; i++)
     if (r->metatables[i] > 0)
       luaL_unref(r->L, LUA_REGISTRYINDEX, r->metatables[i]);
   *r->handle = NULL;
@@ -3674,7 +3753,7 @@ uint32_t bw_ui_runtime_draw_item(BwUiRuntime *r, uint32_t index, BwUiDrawItem *o
   out->layer = o->draw_layer ? o->draw_layer : 3;
   out->stratum = o->frame_stratum;
   out->level = o->frame_level;
-  if (o->type >= 11 && o->parent) {
+  if (!frame_type(o->type) && o->parent) {
     out->stratum = o->parent->frame_stratum;
     out->level = o->parent->frame_level;
   }
@@ -3697,6 +3776,16 @@ uint32_t bw_ui_runtime_draw_item(BwUiRuntime *r, uint32_t index, BwUiDrawItem *o
     out->bottom = rect.bottom;
     out->width = rect.width;
     out->height = rect.height;
+    if (o->parent && o->parent->type == BW_UI_STATUSBAR && o->parent->bar_texture == o) {
+      Object *bar = o->parent;
+      double fraction = bar->range > 0 && bar->value_initialized
+                            ? fmax(0, fmin(1, (bar->value - bar->minimum) / bar->range))
+                            : 0;
+      if (bar->slider_vertical)
+        out->height *= fraction;
+      else
+        out->width *= fraction;
+    }
   }
   out->texture = o->texture_file;
   /* Only authentication messages override the shared red dialog template.
@@ -4024,8 +4113,8 @@ done:
 
 static int draw_compare(const void *a, const void *b) {
   Object *x = *(Object *const *)a, *y = *(Object *const *)b,
-         *xf = x->type >= 11 && x->parent ? x->parent : x,
-         *yf = y->type >= 11 && y->parent ? y->parent : y;
+         *xf = !frame_type(x->type) && x->parent ? x->parent : x,
+         *yf = !frame_type(y->type) && y->parent ? y->parent : y;
   int64_t d = (int64_t)xf->frame_stratum - yf->frame_stratum;
   if (!d)
     d = (int64_t)xf->frame_level - yf->frame_level;
@@ -4390,7 +4479,7 @@ uint32_t bw_ui_runtime_input_at(BwUiRuntime *r, uint32_t kind, double x, double 
   Object *target = NULL;
   for (uint32_t i = 0; i < r->count; i++) {
     Object *o = r->objects[i];
-    if (!visible(o) || o->type > 10)
+    if (!visible(o) || !frame_type(o->type))
       continue;
     uint32_t id = kind == 2 ? event_id(o, "OnMouseWheel") : 0;
     if (kind == 8   ? (o->type != BW_UI_BUTTON && o->type != BW_UI_CHECKBUTTON)

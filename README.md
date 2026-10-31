@@ -39,6 +39,7 @@ Client settings and accepted notices normally persist in browser storage. Origin
 - Animated login and character background scenes, player models, customization, starting clothes, and held-item attachment rendering.
 - Authentication, realm listing/selection, character roster handling, creation previews and server-confirmed character deletion.
 - A local WebSocket-to-TCP bridge and client-side server-protocol handling.
+- An initial original FrameXML artwork/identity shell inside the world canvas, with a separate C/WASM UI session.
 
 These are implementation milestones, not a claim of complete native equivalence. See [current status](docs/STATUS.md), [known issues](docs/KNOWN_ISSUES.md), and the [TODO list](docs/TODO.md).
 
@@ -52,7 +53,9 @@ Use a newly created Human character on your local server and click **Enter World
 
 Character deletion uses the original confirmation dialog: type the displayed confirmation word and confirm. The roster changes only after server confirmation.
 
-Stay outdoors near the starting area. Building collision, jumping/swimming, NPC reconstruction, the in-game HUD, combat and quests are still pending. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
+After the introduction ends or is skipped, the initial FrameXML shell can show the original player/main-menu artwork and the character name/level. It does not yet provide a portrait, health/resources, action buttons, chat or functional in-game menus.
+
+Stay outdoors near the starting area. Building collision, jumping/swimming, NPC reconstruction, a functional in-game HUD, combat and quests are still pending. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
 
 ## Project layout
 

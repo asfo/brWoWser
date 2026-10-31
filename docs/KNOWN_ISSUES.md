@@ -39,8 +39,16 @@
 - Repeated effect models share a simulation in local space and receive per-instance camera transforms. Independent native RNG/phase per emitter instance is not reconstructed.
 - Ground movement uses loaded terrain heights. Building/object collision, gravity, jumping, swimming, transports and camera collision are not implemented. Stay outdoors near the starting location.
 - The player can use stand/run poses, but animation blending, backward/strafe-specific poses and authoritative object-update reconciliation remain incomplete.
-- Server object-update packets are received but their entities are not reconstructed yet. NPCs, other players, combat, quests and the in-game HUD are not available.
+- Server object-update packets are received but their entities are not reconstructed yet. NPCs, other players, combat and quests are not available. The first in-game UI is an artwork/identity shell, not a functional gameplay HUD.
 - Introduction cameras and narration use the current client's CinematicSequences, CinematicCamera and SoundEntries data. Escape confirmation currently reuses the C/Lua glue dialog; the complete in-game cinematic frame and letterboxing are not reconstructed yet.
 - Outdoor streaming keeps a 3x3 terrain neighborhood, a bounded ground cache and up to 256 distinct structure/decoration assets. Entry initially waits for the camera/player tiles; neighboring tiles and subsequent scenery stream without pausing narration. Camera-relative terrain/static-structure projection and a shared per-frame effect clock reduce precision/phase instability, but visual validation remains manual. This is an initial-zone implementation, not unrestricted world traversal.
 
 - Character deletion uses the original typed confirmation and server result. Its dialog-open hook captures the selected GUID without replacing the original Lua delete function. Enter/Escape are routed to the original delete edit-box handlers before the underlying selector, and held Enter does not carry into world entry. A deletion timeout refreshes the roster without retrying the mutation or reporting success; reconnecting is required before further character mutations or world entry because the result remains uncertain. Live deletion/error-flow validation remains manual; no character is removed optimistically.
+
+## In-game FrameXML
+
+- The initial profile loads a selected dependency closure, not every entry in `FrameXML.toc`. `window.worldUIStatus` reports resource counts, deferred components and import/render issues.
+- Player/main-menu artwork and player name/level can be drawn after the introduction. The portrait, health/power/XP values, action buttons, chat, minimap and in-game menus are not implemented yet.
+- General world component lifecycles and interaction remain deferred until their APIs and real server state are available. The static shell does not imply that clicking its artwork performs game actions.
+- StatusBar supports source bar textures/colors and bounded min/max/value fill geometry. Additional orientation/reverse-fill behavior and full native StatusBar event semantics still need implementation.
+- The initial player snapshot comes from character enumeration. Live unit/object fields and reconciliation are the next prerequisite for functional health/resource displays.
