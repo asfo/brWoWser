@@ -56,6 +56,7 @@ export async function createCharacterPreview({
     disposed = true;
     disposePortrait();
     particleRenderer?.dispose();
+    model.dispose();
     for (const child of attachments) child.preview.dispose();
     for (const buffer of buffers) gl.deleteBuffer(buffer);
     for (const texture of textures) if (texture) gl.deleteTexture(texture);

@@ -1,25 +1,45 @@
-import { instantiate } from '../wasm/instantiate.mjs';
+import { sharedExports } from '../wasm/shared.mjs';
+const owners = new WeakMap();
 export async function createBonePoseRuntime(wasm, model, prepared, { normalizer = 0 } = {}) {
   if (model.byteLength > 8388608 || prepared.byteLength % 48 || prepared.byteLength > 65536 * 48)
     throw Error('pose input capacity');
-  const { instance } = await instantiate(wasm),
-    e = instance.exports,
+  const e = await sharedExports(wasm),
     count = prepared.byteLength / 48;
-  let modelLength = model.byteLength;
+  let modelLength = model.byteLength,
+    upper = [1, 0],
+    closed = false;
+  const context = {};
+  function bind() {
+    if (closed) throw Error('Bone pose is closed');
+    if (owners.get(e) !== context) {
+      new Uint8Array(e.memory.buffer, e.model_ptr(), model.length).set(model);
+      new Uint8Array(e.memory.buffer, e.prepared_ptr(), prepared.length).set(prepared);
+      owners.set(e, context);
+    }
+    if (e.set_normalizer(normalizer) || e.set_upper_body(...upper))
+      throw Error('Pose context rejected');
+  }
   if (e.set_normalizer(normalizer)) throw Error('invalid normalizer mode');
-  new Uint8Array(e.memory.buffer, e.model_ptr(), model.byteLength).set(model);
-  new Uint8Array(e.memory.buffer, e.prepared_ptr(), prepared.byteLength).set(prepared);
+  bind();
   return {
     setUpperBody(cosine = 1, sine = 0) {
       if (e.set_upper_body(cosine, sine)) throw Error('Upper-body orientation rejected');
+      upper = [cosine, sine];
     },
     setModel(bytes) {
       if (!(bytes instanceof Uint8Array) || bytes.length < 0x138 || bytes.length > 8388608)
         throw Error('pose model capacity');
-      new Uint8Array(e.memory.buffer, e.model_ptr(), bytes.length).set(bytes);
+      model = bytes;
       modelLength = bytes.length;
+      if (owners.get(e) === context) owners.delete(e);
+    },
+    dispose() {
+      closed = true;
+      if (owners.get(e) === context) owners.delete(e);
+      model = prepared = null;
     },
     sample(sequenceMs, globalMs, view) {
+      bind();
       for (const ms of [sequenceMs, globalMs])
         if (!Number.isInteger(ms) || ms < 0 || ms > 0xffffffff) throw Error('invalid pose time');
       if (view) {

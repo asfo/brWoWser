@@ -33,6 +33,8 @@ uint32_t decode_mesh(uint32_t n, uint32_t vertices) {
   if (!span(n, 12, 2) || !span(n, 28, 48))
     return 3;
   uint32_t count = u32(12), off = u32(16), nr = u32(28), ro = u32(32);
+  if (!count && !nr && !vertices && !u32(4))
+    return 0;
   if (!count || count > 131072 || !nr || nr > 512 || !vertices || vertices > 32768)
     return 4;
   for (uint32_t i = 0; i < count; i++)

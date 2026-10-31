@@ -4,6 +4,8 @@
  * explicit browser policies, not native allocator/entropy equivalence. */
 #include <stdint.h>
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 #include "binding.h"
 #include "../particle_generation/generation.h"
 #include "../particle_shape/shape.h"
@@ -25,12 +27,12 @@ typedef struct {
   uint32_t count, burst_on, active[CAPACITY], free[CAPACITY], free_count;
   float matrix[16], inherited_velocity[3], inherited_time;
 } Emitter;
-static Emitter emitters[EMITTERS];
+static Emitter legacy_emitters[EMITTERS], *emitters = legacy_emitters;
 static float bones[MAX_BONES * 16], view[16];
 static uint8_t valid[MAX_BONES], table[256];
 static float output[EMITTERS * CAPACITY * 6 * 9];
 static uint32_t batches[EMITTERS * 5], stats[8];
-static uint32_t model_size, bone_count, emitter_count, initialized;
+static uint32_t model_size, bone_count, emitter_count, initialized, sequence_clock;
 static const float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 uint32_t runtime_bones_ptr(void) {
   return (uint32_t)(uintptr_t)bones;
@@ -100,9 +102,89 @@ int runtime_reset(uint32_t bytes, uint32_t seed, uint32_t palette_count) {
   bone_count = palette_count;
   emitter_count = count;
   initialized = 1;
+  sequence_clock = 0;
   for (int i = 0; i < 8; i++)
     stats[i] = 0;
   return 0;
+}
+/* Persistent pools are sized to actual source emitters. All contexts share
+ * one input/pose/draw workspace; no full WASM instance is allocated per prop. */
+#define CONTEXTS 128
+#define STATE_BUDGET (16u * 1024u * 1024u)
+typedef struct {
+  Emitter *pool;
+  uint32_t bytes, bones, count, ready, clock;
+} Context;
+static Context contexts[CONTEXTS];
+static uint32_t active_context, state_bytes;
+static void save_context(void) {
+  if (active_context) {
+    Context *c = contexts + active_context - 1;
+    c->bytes = model_size;
+    c->bones = bone_count;
+    c->count = emitter_count;
+    c->ready = initialized;
+    c->clock = sequence_clock;
+  }
+}
+int runtime_context_select(uint32_t handle) {
+  if (!handle || handle > CONTEXTS || !contexts[handle - 1].pool)
+    return 1;
+  if (active_context != handle) {
+    save_context();
+    Context *c = contexts + handle - 1;
+    emitters = c->pool;
+    model_size = c->bytes;
+    bone_count = c->bones;
+    emitter_count = c->count;
+    initialized = c->ready;
+    sequence_clock = c->clock;
+    active_context = handle;
+  }
+  return initialized ? sample(model_size, sequence_clock) : 0;
+}
+void runtime_context_destroy(uint32_t handle) {
+  if (!handle || handle > CONTEXTS)
+    return;
+  Context *c = contexts + handle - 1;
+  if (!c->pool)
+    return;
+  if (active_context == handle) {
+    active_context = 0;
+    emitters = legacy_emitters;
+    initialized = 0;
+  }
+  state_bytes -= (c->count ? c->count : 1) * sizeof(Emitter);
+  free(c->pool);
+  memset(c, 0, sizeof(*c));
+}
+uint32_t runtime_context_create(uint32_t bytes, uint32_t seed, uint32_t palette) {
+  if (bytes > 2097152 || !palette || palette > MAX_BONES)
+    return 0;
+  save_context();
+  if (sample(bytes, 0))
+    return 0;
+  uint32_t count = ((uint32_t *)(uintptr_t)info_ptr())[0];
+  if (count > EMITTERS)
+    return 0;
+  uint32_t size = (count ? count : 1) * sizeof(Emitter);
+  if (size > STATE_BUDGET - state_bytes)
+    return 0;
+  uint32_t slot = 0;
+  while (slot < CONTEXTS && contexts[slot].pool)
+    slot++;
+  if (slot == CONTEXTS)
+    return 0;
+  Emitter *pool = calloc(count ? count : 1, sizeof(Emitter));
+  if (!pool)
+    return 0;
+  contexts[slot] = (Context){pool, bytes, palette, count, 0, 0};
+  state_bytes += size;
+  if (runtime_context_select(slot + 1) || runtime_reset(bytes, seed, palette)) {
+    runtime_context_destroy(slot + 1);
+    return 0;
+  }
+  return slot + 1;
 }
 typedef struct {
   Emitter *emitter;
@@ -264,6 +346,7 @@ int runtime_step(uint32_t sequence_ms, float dt) {
     return 1;
   if (sample(model_size, sequence_ms))
     return 2;
+  sequence_clock = sequence_ms;
   for (uint32_t i = 0; i < emitter_count; i++) {
     int code = update_one(i, dt);
     if (code) {

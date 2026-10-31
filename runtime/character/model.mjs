@@ -1,4 +1,11 @@
-import { instantiate } from '../wasm/instantiate.mjs';
+import { sharedExports } from '../wasm/shared.mjs';
+const materialOwners = new WeakMap(),
+  skinQueues = new WeakMap();
+function composeSkin(e, task) {
+  const next = (skinQueues.get(e) || Promise.resolve()).catch(() => {}).then(task);
+  skinQueues.set(e, next);
+  return next;
+}
 import { createBonePoseRuntime } from '../scene/bones.mjs';
 import { createUVTranslationRuntime } from '../scene/uv.mjs';
 import { composeCharacterSkin } from './catalog.mjs';
@@ -25,7 +32,7 @@ function binary(bytes, magic, minimum, maximum) {
 }
 async function moduleExports(wasm) {
   if (!wasm) throw Error('Character decoder module unavailable');
-  return (await instantiate(wasm)).instance.exports;
+  return sharedExports(wasm);
 }
 function copyIn(e, pointer, bytes) {
   if (pointer > e.memory.buffer.byteLength || bytes.length > e.memory.buffer.byteLength - pointer)
@@ -299,12 +306,8 @@ export async function loadCharacterModel({
   } else if (!metadata.isBackground && !metadata.isWorldProp) {
     replacements.set(
       1,
-      await composeCharacterSkin(
-        metadata.textureLayers,
-        decodeTexture,
-        prepare,
-        onIssue,
-        checkpoint,
+      await composeSkin(prepare, () =>
+        composeCharacterSkin(metadata.textureLayers, decodeTexture, prepare, onIssue, checkpoint),
       ),
     );
     if (metadata.cloakTexture) replacements.set(2, await decodeTexture(metadata.cloakTexture));
@@ -347,6 +350,15 @@ export async function loadCharacterModel({
   copyIn(material, material.skin_ptr(), skin);
   if (material.decode_materials(materialModel.length, skin.length))
     throw Error('Character material decoder rejected');
+  materialOwners.set(material, materialModel);
+  function activateMaterial() {
+    if (materialOwners.get(material) === materialModel) return;
+    copyIn(material, material.model_ptr(), materialModel);
+    copyIn(material, material.skin_ptr(), skin);
+    if (material.decode_materials(materialModel.length, skin.length))
+      throw Error('Character material rebind rejected');
+    materialOwners.set(material, materialModel);
+  }
   const info = new Uint32Array(material.memory.buffer, material.info_ptr(), 3);
   const rows = new Uint32Array(material.memory.buffer, material.rows_ptr(), info[0] * 9).slice();
   const stages = new Uint32Array(
@@ -369,6 +381,14 @@ export async function loadCharacterModel({
       bounds.max[j] = Math.max(bounds.max[j], value);
     }
     for (let j = 0; j < 4; j++) uv[i * 4 + j] = view.getFloat32(i * 48 + 32 + j * 4, true);
+  }
+  if (!vertexCount) {
+    for (let i = 0; i < 3; i++) {
+      bounds.min[i] = m.view.getFloat32(0xa0 + i * 4, true);
+      bounds.max[i] = m.view.getFloat32(0xac + i * 4, true);
+    }
+    if (![...bounds.min, ...bounds.max].every(Number.isFinite))
+      throw Error('Particle-only model bounds rejected');
   }
   let pose,
     duration = 0;
@@ -533,6 +553,7 @@ export async function loadCharacterModel({
     },
     pointLights(elapsedMs) {
       if (!hasPointLights) return [];
+      copyIn(prepare, prepare.model_ptr(), model);
       const palette = samplePose(elapsedMs),
         ms = Math.floor(elapsedMs);
       if (palette) {
@@ -645,6 +666,7 @@ export async function loadCharacterModel({
     rows,
     stages,
     appearance(elapsedMs) {
+      activateMaterial();
       const ms = Math.floor(elapsedMs);
       const status = material.sample_appearance(
         materialModel.length,
@@ -660,6 +682,7 @@ export async function loadCharacterModel({
       );
     },
     drawOrder(eye) {
+      activateMaterial();
       if (material.sort_batches(skin.length, ...eye)) throw Error('Character draw order rejected');
       return new Uint32Array(material.memory.buffer, material.order_ptr(), rows.length / 9);
     },
@@ -682,6 +705,15 @@ export async function loadCharacterModel({
     get particleStatus() {
       return { ...particleStatus };
     },
+    dispose() {
+      if (materialOwners.get(material) === materialModel) materialOwners.delete(material);
+      particles?.dispose();
+      particles = null;
+      pose?.dispose();
+      runPose?.dispose();
+      uvAnimation?.dispose();
+      movementClips.clear();
+    },
     sampleParticles(elapsedMs, view) {
       if (!particles) return null;
       const palette = samplePose(elapsedMs);
@@ -696,6 +728,7 @@ export async function loadCharacterModel({
         particleStatus = { state: 'running', ...sample.stats };
         return sample;
       } catch (error) {
+        particles?.dispose();
         particles = null;
         particleStatus = { state: 'stopped', emitters: emitterCount, error: error.message };
         onIssue('Character background particles stopped: ' + error.message);

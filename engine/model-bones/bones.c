@@ -287,7 +287,9 @@ uint32_t pose(uint32_t n, uint32_t sequence_ms, uint32_t global_ms) {
   return 0;
 }
 uint32_t skin(uint32_t count) {
-  for (uint32_t i = 0; i < 65536; i++)
+  if (count > 65536)
+    return 1;
+  for (uint32_t i = 0; i < count; i++)
     vertex_valid[i] = 0;
   if (!ready || count > 65536)
     return 1;

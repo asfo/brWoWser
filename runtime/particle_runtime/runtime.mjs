@@ -1,4 +1,5 @@
-import { instantiate } from '../wasm/instantiate.mjs';
+import { sharedExports } from '../wasm/shared.mjs';
+const owners = new WeakMap();
 /* Transport and browser clock admission only. Simulation, original records,
  * attachment construction, random consumption and generated quads are C/WASM. */
 export async function createParticleRuntime({
@@ -11,20 +12,36 @@ export async function createParticleRuntime({
 }) {
   if (
     !(model instanceof Uint8Array) ||
+    model.length < 0x138 ||
+    model.length > 2097152 ||
     !(randomTable instanceof Uint8Array) ||
     randomTable.length !== 256 ||
     !Number.isInteger(sequenceDurationMs) ||
     sequenceDurationMs < 1
   )
     throw Error('invalid particle resources');
-  const {
-    instance: { exports: e },
-  } = await instantiate(wasm);
+  const e = await sharedExports(wasm),
+    context = {};
+  let closed = false;
+  owners.delete(e);
   new Uint8Array(e.memory.buffer, e.input_ptr(), model.length).set(model);
   new Uint8Array(e.memory.buffer, e.runtime_table_ptr(), 256).set(randomTable);
+  const handle = e.runtime_context_create(model.length, seed, boneCount);
+  if (!handle) throw Error('Particle state allocation/admission rejected');
+  owners.set(e, context);
+  function bind() {
+    if (closed) throw Error('Particle runtime is closed');
+    if (owners.get(e) !== context) {
+      new Uint8Array(e.memory.buffer, e.input_ptr(), model.length).set(model);
+      new Uint8Array(e.memory.buffer, e.runtime_table_ptr(), 256).set(randomTable);
+      if (e.runtime_context_select(handle)) throw Error('Particle state rebind rejected');
+      owners.set(e, context);
+    }
+  }
   let previousGlobal = null,
     lastSequence = null;
   function reset() {
+    bind();
     const status = e.runtime_reset(model.length, seed, boneCount);
     if (status) throw Error('particle reset rejected ' + status);
     previousGlobal = null;
@@ -32,7 +49,15 @@ export async function createParticleRuntime({
   }
   reset();
   return {
+    dispose() {
+      if (closed) return;
+      closed = true;
+      if (owners.get(e) === context) owners.delete(e);
+      e.runtime_context_destroy(handle);
+      model = randomTable = null;
+    },
     sample({ sequenceMs, globalMs, matrices, boneValid, view }) {
+      bind();
       if (
         !Number.isInteger(sequenceMs) ||
         sequenceMs < 0 ||

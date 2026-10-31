@@ -288,7 +288,8 @@ async function worldOperation(data) {
         throw Error('Invalid world controls');
       floats(world.world_controls(), 7).set(data.controls);
       world.world_movement_clock(data.platformTime >>> 0);
-      if (world.world_step(data.elapsed)) throw Error('World movement rejected');
+      const movementCode = world.world_step(data.elapsed);
+      if (movementCode) throw Error('World movement rejected (' + movementCode + ')');
       if (world.world_orbit()) throw Error('World camera rejected');
     }
     if (world.world_view(data.aspect)) throw Error('World view rejected');

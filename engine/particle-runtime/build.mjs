@@ -22,6 +22,9 @@ for (const path of [
   files[name] = source;
 }
 const names = [
+  'runtime_context_create',
+  'runtime_context_select',
+  'runtime_context_destroy',
   'input_ptr',
   'runtime_bones_ptr',
   'runtime_bone_valid_ptr',

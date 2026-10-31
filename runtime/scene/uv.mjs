@@ -1,9 +1,18 @@
-import { instantiate } from '../wasm/instantiate.mjs';
+import { sharedExports } from '../wasm/shared.mjs';
+const owners = new WeakMap();
 export async function createUVTranslationRuntime(wasm, model) {
   if (model.byteLength < 0x138 || model.byteLength > 2097152) throw Error('UV model capacity');
-  const { instance } = await instantiate(wasm),
-    e = instance.exports;
-  new Uint8Array(e.memory.buffer, e.model_ptr(), model.byteLength).set(model);
+  const e = await sharedExports(wasm),
+    context = {};
+  let closed = false;
+  function bind() {
+    if (closed) throw Error('UV runtime is closed');
+    if (owners.get(e) !== context) {
+      new Uint8Array(e.memory.buffer, e.model_ptr(), model.byteLength).set(model);
+      owners.set(e, context);
+    }
+  }
+  bind();
   const v = new DataView(model.buffer, model.byteOffset, model.byteLength),
     globals = v.getUint32(20, true);
   if (globals > 256) throw Error('UV clock capacity');
@@ -19,11 +28,18 @@ export async function createUVTranslationRuntime(wasm, model) {
     };
   }
   return {
+    dispose() {
+      closed = true;
+      if (owners.get(e) === context) owners.delete(e);
+      model = null;
+    },
     sample(ms) {
+      bind();
       if (!Number.isInteger(ms) || ms < 0 || ms > 0xffffffff) throw Error('invalid UV time');
       return finish(e.sample(model.byteLength, ms));
     },
     sampleScroll(ms) {
+      bind();
       if (!Number.isInteger(ms) || ms < 0 || ms > 0xffffffff) throw Error('invalid UV time');
       const status = e.sample_scroll(model.byteLength, ms);
       if (status) return null;
@@ -31,6 +47,7 @@ export async function createUVTranslationRuntime(wasm, model) {
       return new Float32Array(e.memory.buffer, e.matrices_ptr(), info[0] * 16).slice();
     },
     sampleClocks(values) {
+      bind();
       if (
         values.length !== globals ||
         !Array.from(values).every((x) => Number.isInteger(x) && x >= 0 && x <= 0xffffffff)

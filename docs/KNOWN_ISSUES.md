@@ -1,68 +1,99 @@
-# Known issues
+# Project status
 
-## Character rendering
+Updated: 2026-10-30.
 
-- Some races/backgrounds still differ from the original in lighting, glow, fog, and material appearance.
-- Night Elf eye glow is selected and submitted but has been reported missing visually. `window.characterPreviewStatus.eye_glow_triangles` reports submitted geometry, not visible pixels.
-- Character scale/framing and held-item grips were recently changed and still require manual comparison across races and sexes.
-- Shoulder/head attachments and complete equipment/geoset behavior are unfinished.
-- Scalp/facial customization, ranged-weapon selection, shield mounts, and roster clothing were recently corrected from local resource inspection; their final appearance still requires manual comparison.
-- The portable bloom kernel and final lighting are not established as native pixel equivalents.
+brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and initial outdoor-world flow. An initial outdoor world-entry implementation is now available for manual validation; general in-world gameplay is not implemented.
 
-## Interface and media
+## Implemented
 
-- Credits/options layout, transitions, and performance need further review.
-- Audio may require a browser user gesture; browser autoplay policy applies.
-- Audio/cinematic decoding and startup behavior depend on supplied files and supported media encodings.
-- Some actions and configuration controls remain intentionally limited while the original default presentation is reconstructed.
+- C/WASM interface object lifecycle, original local GlueXML/Lua loading, text and texture quads, clipping, scrollbars, button states, edit boxes, and pointer/keyboard input.
+- Full-viewport canvas presentation, original software cursor, notices, and persisted browser configuration.
+- Local cinematic preparation and canvas playback, including Escape handling.
+- Music, ambience, UI sounds, and selected scene cues.
+- Login scene rendering with animated models, textures, material passes, and particles.
+- Authentication, realm selection, and character roster protocol handling through a local WebSocket bridge.
+- Character creation interface, supported race/class combinations from `CharBaseInfo`, customization, source-based backgrounds, player skin composition, and held weapons/shields.
+- Animated hand anchors and `HandsClosed` finger tracks for occupied hands.
+- Uncovered ears select geoset 702 across character models; models with ears integrated into the body retain their existing geometry. Final visual review remains manual.
+- Character selection applies clothing textures and garment geosets from server-reported equipment, using the same composition path as creation previews.
+- Bald hair variants retain their scalp mesh; facial customization maps the source table's 1/3/2 geoset order for features such as piercings and tusks.
+- Hunters preview their source-provided ranged weapon. Bows use the left palm; shields use the forearm mount while retaining the left-hand grip pose.
 
-## Networking and gameplay
-
-- The bridge currently accepts auth/world routes on the same machine. Public-server compatibility is not guaranteed.
-- Session stability, retry behavior, and server-specific protocol behavior need further work.
-- Character creation is under development; the presence of a preview does not establish successful creation on every server.
-- Initial outdoor world entry is available. General in-game gameplay is not implemented.
-
-## Build and data
-
-- The runtime is bounded to the selected WotLK build/profile. Executables with different compatibility strings or particle-table layouts are rejected.
-- Cinematics must be present in the supplied local client. Conversion requires `ffmpeg` and `ffprobe`.
-- The first build needs access to pinned public build dependencies. Generated outputs and extracted client data are private local state, not repository contents.
+- Character deletion preserves the original typed confirmation, captures the confirmed GUID, waits for the server response and refreshes the roster on success.
 
 ## First outdoor world entry
 
-- Resource-load failures show a Retry/Cancel dialog while preserving the world connection. They are reported separately from transport/server disconnections; manual recovery validation is still pending.
+- Enter World sends the selected character GUID and uses the server-provided map and position.
+- World time synchronization is answered while the existing session services remain active.
+- A C/WASM worker decodes ADT terrain, texture alpha maps, static WMO groups, static M2 decoration and instance transforms.
+- C/WASM evaluates the source introduction camera spline, terrain heights, ground movement, player placement and view matrices. JavaScript owns browser I/O, input forwarding, media playback and WebGL submission.
+- Server-triggered introductions resolve their source camera and narration. Escape opens a canvas C/Lua confirmation; completion restores the follow camera.
+- Initial outdoor controls support forward/backward movement, turning, strafing, Space jumping, right-button camera orbit and wheel zoom, with server movement packets and source running/backward/jump poses. Diagonal visual facing is computed in WASM.
+- Archive sector reads use a bounded block cache; decoded textures transfer to the browser without another buffer copy. Frame samples take priority over background reads, and a bounded queue loads visible scenery instead of every asset in each tile.
+- ADT object records persist across camera movement and cinematic skipping; C/WASM recomputes their visibility for the current view. Terrain bounds are prepared once during decoding.
+- WMO decoration sets and exterior-group references admit the five Valley of Heroes statues and source-authored props. Torches and chimneys use original particle records with instance-local camera transforms.
+- Sky color bands and their spatial/time selection run in C/WASM from Light tables; server game time anchors the clock.
+- World drawing is presented at an animation-frame boundary. Input/audio acknowledgements no longer present UI-only frames over the world.
+- Builds and bounded owner-resource decoding have been inspected. The latest visual changes, load times, deletion controls and frame stability require manual validation.
 
-- World entry has been exercised manually. The latest streaming, introduction and frame-presentation changes still need manual comparison; compilation and resource decoding do not establish native visual equivalence.
-- Outdoor scenes admit terrain, WMO exterior groups plus nearby interior groups selected for collision, their selected/default decoration sets and referenced M2 props. Particle/UV-driven props use the C/WASM model and particle pipeline. Water, portal-based indoor traversal, complete material permutations and native world-light blending remain incomplete.
-- Sky color bands and time selection come from owner Light tables and server time. `window.worldStatus.game_time_minutes` exposes the current server-clock minute for manual day/night comparison. Cloud projection is reconstructed; full regional skyboxes, celestial bodies and exact native sky pixels remain unfinished.
-- Repeated effect models share a simulation in local space and receive per-instance camera transforms. Independent native RNG/phase per emitter instance is not reconstructed.
-- Ground movement uses terrain heights and original static M2/WMO collision triangles. The initial capsule uses a 0.35-unit radius and 1.8-unit height, short movement substeps, capsule sweeps for stair/ramp support, axis sliding and gravity. Space launches a jump with source jump/fall/landing clips and movement messages. Race-specific capsules, swimming, transports, moving-object collision and exact native movement blending remain unfinished. Collision and visual comparison remain manual.
-- World locomotion now selects source Stand, Run, Walkbackwards and jump/fall/landing clips. Diagonal visual facing is computed in WASM separately from network facing. The lower-spine branch counter-rotates to preserve upper-body facing while the legs follow travel. Exact native transition blending and authoritative object-update reconciliation remain incomplete.
-- Server object-update packets are received but their entities are not reconstructed yet. NPCs, other players, combat and quests are not available. The first in-game UI is an artwork/identity shell, not a functional gameplay HUD.
-- Introduction cameras and narration use the current client's CinematicSequences, CinematicCamera and SoundEntries data. Escape confirmation currently reuses the C/Lua glue dialog; the complete in-game cinematic frame and letterboxing are not reconstructed yet.
-- Outdoor streaming keeps a 3x3 terrain neighborhood, a bounded ground cache and up to 256 distinct structure/decoration assets. Entry initially waits for the camera/player tiles; neighboring tiles and subsequent scenery stream without pausing narration. Camera-relative terrain/static-structure projection and a shared per-frame effect clock reduce precision/phase instability, but visual validation remains manual. This is an initial-zone implementation, not unrestricted world traversal.
+## Initial in-game FrameXML shell
 
-- Character deletion uses the original typed confirmation and server result. Its dialog-open hook captures the selected GUID without replacing the original Lua delete function. Enter/Escape are routed to the original delete edit-box handlers before the underlying selector, and held Enter does not carry into world entry. A deletion timeout refreshes the roster without retrying the mutation or reporting success; reconnecting is required before further character mutations or world entry because the result remains uncertain. Live deletion/error-flow validation remains manual; no character is removed optimistically.
+- A dedicated world-UI worker owns a separate C/Lua VM from the login session. It reads the owner-local `FrameXML.toc` and a bounded dependency closure; original sources stay outside Git.
+- The selected profile now includes original Minimap.xml/Lua alongside WorldFrame, UIParent, PlayerFrame and MainMenuBar. Component lifecycle activation remains deferred; source import and browser appearance are separate validation steps.
+- C/WASM owns frame composition, font rasterization, StatusBar geometry and the initial unit identity APIs. Name, level, race, class, sex and GUID come from the authenticated roster and client metadata.
+- The shell appears after the introduction ends or is skipped, inside the existing canvas. It remains hidden during the introduction. Loading failures are isolated from the world connection and exposed through `window.worldUIStatus`.
+- General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, action buttons, chat and menu interaction remain unfinished.
 
-## In-game FrameXML
+## Player portrait, resource bars and minimap
 
-- The initial profile loads a selected dependency closure, not every entry in `FrameXML.toc`. `window.worldUIStatus` reports resource counts, deferred components and import/render issues.
-- Player/main-menu/minimap artwork, a cached 3D portrait and selected server health/resource values can be drawn after the introduction. Portrait framing, resource formatting and minimap composition still require manual comparison. XP, action buttons, chat and in-game menus remain unfinished.
-- General world component lifecycles and interaction remain deferred until their APIs and real server state are available. The artwork does not imply that clicking it performs game actions. The minimap currently supports terrain presentation and a direction marker; zoom/tracking/POI/world-map interactions and indoor WMO maps are pending.
-- StatusBar supports source bar textures/colors and bounded min/max/value fill geometry. Additional orientation/reverse-fill behavior and full native StatusBar event semantics still need implementation.
-- Identity starts from character enumeration; health/resource bars use the decoded server player-field snapshot. General unit/object APIs, authoritative motion reconciliation and NPC reconstruction remain pending. `window.worldUnitStatus.decodeIssue` reports unsupported/malformed update packets without disconnecting the session.
+- A bounded C decoder reads raw/compressed build-12340 object updates and commits the local player's fields only after the complete packet parses. Creation initializes omitted fields to their protocol-defined zero values. Unsupported packets preserve the previous snapshot instead of closing the connection; `window.worldUnitStatus` exposes the latest decoder status.
+- C/Lua APIs expose known health/max health and the active power pool/type. The original health/resource StatusBars receive these server values, including rage/runic-power scaling. This is selected-player state, not general object/NPC reconstruction.
+- The owner character model supplies a cached 3D head portrait rendered to a small GPU surface. Camera/pose preparation stays in WASM and no pixels are read back to JavaScript. Native portrait framing/lighting still needs manual comparison.
+- WASM resolves the owner md5translate.trs map index, nine nearby minimap textures, north-up coordinates and the initial direction marker. Original FrameXML supplies minimap placement/artwork. Zoom buttons, tracking, POIs, indoor WMO minimaps and world-map interaction are pending.
+- World previews use Item.dbc sheathe types and the model's matching storage attachments. Combat-driven unsheathing/equipment changes remain pending.
+- World rendering may present at up to 60 FPS. Scene decoding/simulation uses a worker separate from character/portrait/minimap texture reads; inactive character-selector ticks no longer run behind the world. Native locomotion blending and sustained frame pacing remain under review.
 
-## World audio and collision streaming
+## Static collision and initial world audio
 
-- Area music, ambience and intro cues are selected in WASM from the owner AreaTable, ZoneMusic, SoundAmbience, ZoneIntroMusicTable and SoundEntries tables. Ambience loops; music follows the source silence intervals between selections. Initial day/night selection uses 06:00/18:00 server time and a deterministic file-selection seed; exact native timing/randomness and all sound flags remain unvalidated.
-- The initial world audio uses the profile's default channel/master volumes and a dedicated sound-read worker. Suspended WebAudio contexts retry on user interaction. Indoor WMO area overrides remain pending. Live in-game audio settings, footsteps, combat, weather, positional emitters, attenuation, reverb and occlusion are pending.
-- Static collision meshes are loaded independently of camera visibility near the player. Initial nearby geometry is prepared before world readiness; newly approached geometry streams in the background. This does not establish collision coverage for unloaded areas or unrestricted traversal.
-- WMO collision faces use source MOPY flags and collision-only materials; M2s use their bounding-triangle meshes. Assets without collision triangles remain non-solid. The current collision budgets are 1,024 meshes, 8,192 instances and 524,288 triangles, without general traversal eviction yet.
-- Native `worldStatus` diagnostics expose collision counts, selected locomotion, grounded state, area, sound paths and browser playback state. They are implementation diagnostics, not proof of native physical or visual equivalence.
+- Legacy ADT/WMO model references ending in `.mdl` or `.mdx` normalize to `.m2` before lookup. This includes the reported `TORCH.MDL` reference.
+- The WASM world module admits source M2 bounding triangles and WMO collision/render faces, transforms instance geometry, performs capsule/triangle checks, samples walkable model surfaces and integrates short movement steps with sliding. Nearby collision loading is independent of the render frustum; nearby WMO interior geometry can also be drawn.
+- A bounded owner-resource preparation around Northshire admitted 57 collision meshes / 165 instances containing 9,643 triangles from the selected nearby records, including nine WMO groups. This is asset admission evidence; movement behavior remains manually validated.
+- WASM resolves source area inheritance and SoundEntries file selection for music/ambience/intro channels. The browser supplies media decoding/output without blocking world frame delivery. Northshire's source data resolved music 2523 and ambience 4183 during local preparation.
+- Ground movement sweeps the capsule onto stair edges and slopes. Q/E uses running clips with travel-facing legs and a lower-spine counter-rotation that keeps the torso forward, while network facing remains independent. WASM integrates jump/gravity/landing and queues movement snapshots for the network boundary. Turn-left, turn-right, jump and landing use their distinct protocol opcodes. These changes still require manual comparison.
+- World music/ambience reads run separately from terrain decompression. Browser playback state is exposed in `window.worldStatus.audioPlayback`; blocked WebAudio contexts resume on trusted user interaction.
+- World locomotion reuses one movement pose VM across the admitted source clips rather than allocating another full VM for every direction.
+- The model-light argument regression introduced with the FrameXML type extension is corrected: the native bridge reads exactly the 13 supplied light values using the array's length.
 
-- Loading artwork is selected from the owner Map/LoadingScreens tables, with a wide variant when supplied. Original loading-bar textures are drawn inside the canvas; WASM owns layout and monotonic progress. Progress represents completed resource stages, not original-client byte-level scheduling. It remains visible until the first world frame. Original visual comparison, seamless map transfers and a loading-time tips lifecycle remain pending.
-- Follow-camera collision queries nearby admitted static triangles with a small near-plane ray bundle, plus terrain clearance. Unloaded geometry, moving objects and exact native camera smoothing remain limitations.
-- Normal jumps retain the jump clip during descent; free-fall animation is reserved for walking off a ledge. Manual comparison of landing poses and height support remains pending.
+## Loading presentation and follow camera
 
-- Stored world weapons use source Item.dbc sheath types; live combat/equipment-driven changes are pending. Q/E limits the pelvis turn to 45 degrees and counter-rotates the upper spine; this remains an approximation of native locomotion blending. World presentation targets up to 60 FPS but streaming/CPU skinning can still reduce frame rate.
+- Source Map field 57 resolves LoadingScreens artwork. Original wide variants and loading-bar background/fill/border textures are decoded by the C BLP decoder, including 1024-pixel artwork.
+- WASM supplies loading-screen quads and monotonic progress; the browser submits those quads to the same WebGL canvas. Resource stages update the bar without fabricated time-based advancement. The screen remains until the first world frame, including when an introduction starts.
+- The follow camera contracts its orbit against admitted static collision faces and terrain; it does not change the user's requested zoom distance. Normal jump descent no longer selects the ledge/free-fall clip.
+- Compilation and bounded owner-asset admission do not establish native visual equivalence. Loading composition, torso/leg orientation, landing and camera behavior require manual review.
+
+## WASM workspace and effect memory
+
+- Character preparation, topology, camera and material decoders share synchronous workspaces. Materials rebind their own source model/skin before evaluation; asynchronous body-skin composition is serialized to preserve each atlas.
+- Bone/UV runtimes share workspaces while retaining separate model, clock/orientation inputs and copied results. Particle instances share one WASM memory; their native pools allocate only the source emitter count, retain independent RNG/live state and release it when the preview is disposed.
+- Particle state currently admits 128 contexts within a 16 MiB pool budget. Shared output/input workspaces are separate from that state budget; GPU resources and whole-browser memory are not covered by this number.
+- Owner-resource preparation admitted HOUSESMOKE, BLACKSMITH_SMOKE, TORCH and NEWWATERFALL without issues. BLACKSMITH_SMOKE has zero mesh vertices and two particle emitters; the decoders now admit a consistently empty source mesh without dropping its effects. No browser rendering or long-session memory validation was performed.
+- Landing requires nearby walkable support; a lateral capsule contact no longer independently produces a landing event. This avoids repeated fall/land transitions when sliding against a ledge. Manual movement comparison remains pending.
+
+## Current review
+
+- Lighting and camera framing were recently restored after regressions. Final appearance still needs manual comparison.
+- Weapon placement/grip and tall-race framing need further manual review.
+- Night Elf eye glow is admitted by the renderer but its reported absence remains unresolved.
+- Reconnecting, retrying failed actions, character creation results, and session lifetime need further review.
+
+## Compatibility limits
+
+The project contains client-side auth/world protocol and module-processing components. Their presence is not a promise that every server or server configuration works. The local bridge currently restricts auth/world routes to the same machine. Remote server support and public hosting are not complete.
+
+The runtime does not launch `Wow.exe`: it reads required owner-local data and reconstructs supported behavior. Browser APIs provide WebGL, audio/media decoding, storage, workers, and network transport. Native rendering, timing, complete UI behavior, and in-world gameplay are not fully reproduced.
+
+## Source distribution
+
+The repository contains the application and its build inputs. Historical research, captures, tests, game files, downloaded public source archives, and generated caches remain outside Git. Builds and resource preparation do not depend on retained native captures.
+
+- Model decoding/pose/UV workspaces are now shared instead of allocating a full WASM instance for each effect model. Particle pools retain independent native contexts (128 contexts, 16 MiB state budget) and are released on disposal. GPU memory, the bounded structure cache and unrestricted traversal still need broader budgeting; the shared-pool change has owner-resource admission evidence only.

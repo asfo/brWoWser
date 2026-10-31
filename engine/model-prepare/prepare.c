@@ -38,6 +38,8 @@ uint32_t prepare_records(uint32_t mn, uint32_t sn) {
   uint32_t mc = u32(model, 60), mo = u32(model, 64), bc = u32(model, 120), bo = u32(model, 124);
   uint32_t sc = u32(skin, 4), so = u32(skin, 8), pc = u32(skin, 20), po = u32(skin, 24),
            nc = u32(skin, 28), no = u32(skin, 32);
+  if (!sc && !mc && !pc && !nc)
+    return 0; /* Particle-only source model. */
   if (!sc || sc > 32768 || pc < sc)
     return 5;
   for (uint32_t i = 0; i < sc; i++)

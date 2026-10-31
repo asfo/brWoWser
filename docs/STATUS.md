@@ -71,6 +71,14 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - The follow camera contracts its orbit against admitted static collision faces and terrain; it does not change the user's requested zoom distance. Normal jump descent no longer selects the ledge/free-fall clip.
 - Compilation and bounded owner-asset admission do not establish native visual equivalence. Loading composition, torso/leg orientation, landing and camera behavior require manual review.
 
+## WASM workspace and effect memory
+
+- Character preparation, topology, camera and material decoders share synchronous workspaces. Materials rebind their own source model/skin before evaluation; asynchronous body-skin composition is serialized to preserve each atlas.
+- Bone/UV runtimes share workspaces while retaining separate model, clock/orientation inputs and copied results. Particle instances share one WASM memory; their native pools allocate only the source emitter count, retain independent RNG/live state and release it when the preview is disposed.
+- Particle state currently admits 128 contexts within a 16 MiB pool budget. Shared output/input workspaces are separate from that state budget; GPU resources and whole-browser memory are not covered by this number.
+- Owner-resource preparation admitted HOUSESMOKE, BLACKSMITH_SMOKE, TORCH and NEWWATERFALL without issues. BLACKSMITH_SMOKE has zero mesh vertices and two particle emitters; the decoders now admit a consistently empty source mesh without dropping its effects. No browser rendering or long-session memory validation was performed.
+- Landing requires nearby walkable support; a lateral capsule contact no longer independently produces a landing event. This avoids repeated fall/land transitions when sliding against a ledge. Manual movement comparison remains pending.
+
 ## Current review
 
 - Lighting and camera framing were recently restored after regressions. Final appearance still needs manual comparison.

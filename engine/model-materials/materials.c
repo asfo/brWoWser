@@ -170,6 +170,8 @@ uint32_t decode_materials(uint32_t n, uint32_t sn) {
     if (!span(n, u32(model, fields[i] + 4), u32(model, fields[i]), strides[i]))
       return 3;
   uint32_t bc = u32(skin, 36), bo = u32(skin, 40), sc = u32(skin, 28), so = u32(skin, 32);
+  if (!bc && !sc && !u32(model, 60) && !u32(skin, 4) && !u32(skin, 12))
+    return 0;
   if (!bc || bc > 256 || !sc || !span(sn, bo, bc, 24) || !span(sn, so, sc, 48))
     return 4;
   // Limit profile to literal ASCII named textures; reject unsupported dynamic replacement types.

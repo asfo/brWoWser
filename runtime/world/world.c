@@ -362,6 +362,17 @@ static float ground_height(float x, float y, float low, float high) {
     return mesh;
   return isfinite(mesh) ? fmaxf(terrain, mesh) : terrain;
 }
+/* Edge support must be walkable; a capsule touching a wall is not a landing. */
+static float landing_floor(float x, float y, float low, float high) {
+  const float offsets[5][2] = {{0, 0}, {.24f, 0}, {-.24f, 0}, {0, .24f}, {0, -.24f}};
+  float best = NAN;
+  for (uint32_t i = 0; i < 5; i++) {
+    float z = ground_height(x + offsets[i][0], y + offsets[i][1], low, high);
+    if (isfinite(z) && (!isfinite(best) || z > best))
+      best = z;
+  }
+  return best;
+}
 static int blocked_at(float x, float y, float z) {
   float feet[3] = {x, y, z};
   return bw_collision_blocked(feet, PLAYER_RADIUS, PLAYER_HEIGHT);
@@ -506,6 +517,7 @@ uint32_t world_step(float dt) {
       }
     }
     if (!grounded && slice > 0) {
+      float previous_x = player[0], previous_y = player[1];
       air_move(air_x * slice, air_y * slice);
       float next = player[2] + vertical_speed * slice - .5f * GRAVITY * slice * slice;
       vertical_speed = fmaxf(-60.148f, vertical_speed - GRAVITY * slice);
@@ -525,12 +537,20 @@ uint32_t world_step(float dt) {
         } else
           player[2] = next;
       } else {
-        float floor = ground_height(player[0], player[1], next - PLAYER_RADIUS, player[2] + .02f);
+        float floor = landing_floor(player[0], player[1], next - PLAYER_RADIUS, player[2] + .02f);
         int contact = 0;
         float target = isfinite(floor) ? fmaxf(floor, next) : next;
         float supported = descend(player[0], player[1], player[2], target, &contact);
+        if (contact && (!isfinite(floor) || supported - floor > PLAYER_RADIUS + .02f)) {
+          player[0] = previous_x;
+          player[1] = previous_y;
+          floor = landing_floor(player[0], player[1], next - PLAYER_RADIUS, player[2] + .02f);
+          target = isfinite(floor) ? fmaxf(floor, next) : next;
+          supported = descend(player[0], player[1], player[2], target, &contact);
+        }
         player[2] = supported;
-        if (contact || (isfinite(floor) && next <= floor)) {
+        if (isfinite(floor) &&
+            (next <= floor || (contact && supported - floor <= PLAYER_RADIUS + .02f))) {
           grounded = 1;
           vertical_speed = 0;
           landing_time = .18f;
