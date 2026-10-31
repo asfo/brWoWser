@@ -1522,7 +1522,7 @@ static int method(lua_State *L) {
     if (index >= 4)
       return luaL_error(L, "model lighting capacity");
     float values[13];
-    for (uint32_t i = 0; i < 14; i++) {
+    for (uint32_t i = 0; i < sizeof(values) / sizeof(*values); i++) {
       double value = luaL_checknumber(L, 3 + i);
       if (!isfinite(value) || fabs(value) > 1000000)
         return luaL_error(L, "invalid model lighting parameter");
