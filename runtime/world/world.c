@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "collision.h"
 #include "audio.h"
+#include "loading.h"
 
 /* Bounded owner-asset decoding and ground movement. The host only uploads
  * these arrays and forwards input; no terrain or camera math lives in JS. */
@@ -18,7 +19,7 @@
 static uint8_t input[CAP], alpha[CELLS * 64 * 64 * 4];
 static float vertices[CELLS * VERTS * 11];
 static uint32_t indices[CELLS * 768], chunks[CELLS * 8], meta[8];
-static float controls[16], player[8], camera[10], origin[4];
+static float controls[16], player[10], camera[10], origin[4];
 static uint32_t camera_length, camera_duration;
 static uint8_t camera_bytes[2 * 1024 * 1024];
 typedef struct {
@@ -346,6 +347,7 @@ uint32_t world_spawn(void) {
   memcpy(player, controls, 4 * sizeof(float));
   player[6] = player[3];
   player[7] = 1;
+  player[8] = 1;
   grounded = 1;
   jump_held = jumped = 0;
   movement_enabled = move_overflow = 0;
@@ -540,10 +542,8 @@ uint32_t world_step(float dt) {
   player[4] = flags;
   player[7] = grounded;
   int moved = fabsf(player[0] - oldx) + fabsf(player[1] - oldy) > 1e-5f;
-  player[5] = !grounded          ? jumped && air_time < .18f ? 37
-                                   : vertical_speed < -3     ? 40
-                                                             : 38
-              : moved            ? forward < 0 ? 13 : 5
+  player[5] = !grounded          ? (jumped ? (air_time < .2f ? 37 : 38) : 40)
+              : moved            ? (forward < 0 ? 13 : 5)
               : landing_time > 0 ? 39
                                  : 0;
   /* Feet follow the travel direction. Network/body-facing remains independent. */
@@ -551,6 +551,8 @@ uint32_t world_step(float dt) {
   float heading = player[3] + travel * (forward < 0 ? -1 : 1);
   float difference = atan2f(sinf(heading - player[6]), cosf(heading - player[6]));
   player[6] += difference * fminf(1, dt * 14);
+  player[8] = cosf(player[3] - player[6]);
+  player[9] = sinf(player[3] - player[6]);
   if (flags != last_flags || (uint32_t)(move_clock - last_sent) >= 500)
     movement_event(movement_opcode(flags), flags);
   return move_overflow ? 2 : 0;
@@ -568,6 +570,28 @@ uint32_t world_follow(float yaw, float distance, float pitch) {
   camera[7] = player[1];
   camera[8] = player[2] + 1.7f;
   camera[9] = 0;
+  float fraction = bw_collision_camera(camera + 6, camera + 3, .2f);
+  /* Terrain is not part of the static object mesh table. */
+  for (uint32_t i = 1; i <= 64; i++) {
+    float t = (float)i / 64, x = camera[6] + (camera[3] - camera[6]) * t,
+          y = camera[7] + (camera[4] - camera[7]) * t, z = camera[8] + (camera[5] - camera[8]) * t;
+    float ground = terrain_height(x, y);
+    if (isfinite(ground) && z < ground + .2f) {
+      fraction = fminf(fraction, (float)(i - 1) / 64);
+      break;
+    }
+  }
+  float offset[3], length = 0;
+  for (int i = 0; i < 3; i++) {
+    offset[i] = camera[3 + i] - camera[6 + i];
+    length += offset[i] * offset[i];
+  }
+  length = sqrtf(length);
+  if (fraction < 1 && length > 0) {
+    fraction = fmaxf(.001f, fraction - .15f / length);
+    for (int i = 0; i < 3; i++)
+      camera[3 + i] = camera[6 + i] + offset[i] * fraction;
+  }
   return 0;
 }
 static int track(uint32_t at, uint32_t ms, uint32_t dimensions, float *out) {
@@ -1517,4 +1541,20 @@ void world_audio_sample(float minutes) {
 }
 uint32_t world_audio_next(uint32_t channel) {
   return bw_world_audio_next(channel);
+}
+
+uint32_t world_loading_map(uint32_t n, uint32_t map) {
+  return n > CAP ? 1 : bw_loading_map(input, n, map);
+}
+uint32_t world_loading_screen(uint32_t n) {
+  return n > CAP ? 1 : bw_loading_screen(input, n);
+}
+uint32_t world_loading_path(void) {
+  return (uint32_t)(uintptr_t)bw_loading_path();
+}
+uint32_t world_loading_wide(void) {
+  return bw_loading_wide();
+}
+uint32_t world_loading_layout(float w, float h, float progress) {
+  return (uint32_t)(uintptr_t)bw_loading_layout(w, h, progress);
 }

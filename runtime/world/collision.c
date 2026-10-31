@@ -395,3 +395,40 @@ uint32_t bw_collision_triangles(void) {
 uint32_t bw_collision_instances(void) {
   return instance_count;
 }
+
+/* A small ray bundle protects the camera near plane instead of admitting a
+ * center ray while its corners cross a wall. Both sides of a face collide. */
+float bw_collision_camera(const float *target, const float *eye, float radius) {
+  float best = 1;
+  for (uint32_t ray = 0; ray < 7; ray++) {
+    float a[3], b[3], box[6];
+    for (int k = 0; k < 3; k++) {
+      float offset = ray && (ray - 1) / 2 == (uint32_t)k ? (ray & 1 ? radius : -radius) : 0;
+      a[k] = target[k] + offset;
+      b[k] = eye[k] + offset;
+      box[k] = fminf(a[k], b[k]);
+      box[k + 3] = fmaxf(a[k], b[k]);
+    }
+    for (uint32_t i = 0; i < instance_count; i++) {
+      Instance *in = &instances[i];
+      if (!overlap(box, in->bounds))
+        continue;
+      float p[3], q[3], bounds[6];
+      local_point(in, a, p);
+      local_point(in, b, q);
+      for (int k = 0; k < 3; k++) {
+        bounds[k] = fminf(p[k], q[k]);
+        bounds[k + 3] = fmaxf(p[k], q[k]);
+      }
+      Mesh *mesh = &meshes[in->mesh];
+      for (uint32_t j = 0; j < mesh->count; j++) {
+        Triangle *t = &mesh->triangles[j];
+        float fraction;
+        if (overlap(bounds, t->bounds) && segment_triangle(p, q, t, &fraction) &&
+            fraction > 0.0001f)
+          best = fminf(best, fraction);
+      }
+    }
+  }
+  return best;
+}

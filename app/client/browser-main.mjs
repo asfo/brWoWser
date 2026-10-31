@@ -1,3 +1,4 @@
+import { createLoadingScreen } from '../../runtime/world/loading_screen.mjs';
 import { createWorldHUD } from '../../runtime/ui/world_hud.mjs';
 import { createGlyphAtlas } from '../../runtime/ui/glyph_atlas.mjs';
 import { createSoftwareCursor } from '../../runtime/ui/software_cursor.mjs';
@@ -207,7 +208,8 @@ const launch = (event) => {
       inputConnection,
       keyboardConnection;
     let characterSourcePromise, characterCatalogPromise, characterPreview, characterBackground;
-    let worldClient,
+    let worldLoading,
+      worldClient,
       worldHUD,
       worldKey = '',
       worldGeneration = 0;
@@ -231,6 +233,8 @@ const launch = (event) => {
         if (worldKey) {
           worldGeneration++;
           worldKey = '';
+          worldLoading?.dispose();
+          worldLoading = null;
           worldClient?.dispose();
           worldClient = null;
           worldHUD?.dispose();
@@ -242,6 +246,8 @@ const launch = (event) => {
         if (worldKey || worldClient) {
           worldGeneration++;
           worldKey = '';
+          worldLoading?.dispose();
+          worldLoading = null;
           worldClient?.dispose();
           worldClient = null;
           worldHUD?.dispose();
@@ -258,6 +264,10 @@ const launch = (event) => {
         entry.resourceRevision || 0,
       ]);
       if (key === worldKey) return;
+      worldLoading?.dispose();
+      worldLoading = null;
+      worldClient?.dispose();
+      worldClient = null;
       worldKey = key;
       const generation = ++worldGeneration;
       worldHUD?.dispose();
@@ -284,8 +294,36 @@ const launch = (event) => {
           isCurrent: () => generation === worldGeneration,
           send: (action) => window.uiInput({ kind: 14, ...action }),
           onIssue: (message) => console.warn('World: ' + message),
-          onProgress: (progress) => {
-            window.worldStatus = { ...progress, started: performance.now() };
+          onLoadingScreen: async () => {
+            try {
+              const loading = await createLoadingScreen(
+                gl,
+                source,
+                entry.location.map,
+                canvas.width,
+                canvas.height,
+              );
+              if (generation !== worldGeneration) {
+                loading.dispose();
+                return;
+              }
+              worldLoading = loading;
+              await loading.update(0);
+              loading.draw();
+              await new Promise((resolve) => requestAnimationFrame(resolve));
+            } catch (error) {
+              console.warn('Loading screen: ' + error.message);
+            }
+          },
+          onProgress: async (progress) => {
+            if (generation !== worldGeneration) throw Error('World loading cancelled');
+            window.worldStatus = { ...progress, loadingScreen: worldLoading?.path };
+            if (worldLoading) {
+              await worldLoading.update(progress.progress, canvas.width, canvas.height);
+              if (generation !== worldGeneration) return;
+              worldLoading.draw();
+              await new Promise((resolve) => requestAnimationFrame(resolve));
+            }
           },
         });
         if (generation !== worldGeneration) {
@@ -334,6 +372,8 @@ const launch = (event) => {
           });
       })().catch((error) => {
         if (generation !== worldGeneration) return;
+        worldLoading?.dispose();
+        worldLoading = null;
         window.worldStatus = { phase: 'error', message: error.message };
         console.warn('World: ' + error.message);
         window
@@ -522,7 +562,7 @@ const launch = (event) => {
       () => {
         disposeCharacter();
         worldGeneration++;
-        worldGeneration++;
+        worldLoading?.dispose();
         worldClient?.dispose();
         worldHUD?.dispose();
         disposeBackground();
@@ -854,6 +894,8 @@ const launch = (event) => {
         };
         let inputQueue = Promise.resolve();
         const applyInput = (action) => {
+          if (worldLoading && ((action.kind >= 1 && action.kind <= 7) || action.kind === 13))
+            return Promise.resolve();
           const task = inputQueue.then(() => performInput(action));
           inputQueue = task.catch(() => {});
           return task;
@@ -868,6 +910,9 @@ const launch = (event) => {
               resizing = false;
               viewport = gameViewport(innerWidth, innerHeight, devicePixelRatio);
               applyGameViewport(canvas, viewport);
+              worldLoading
+                ?.resize(canvas.width, canvas.height)
+                .catch((error) => console.warn('Loading screen: ' + error.message));
               worldHUD?.resize(viewport.logicalWidth, viewport.logicalHeight).catch((error) => {
                 console.warn('World UI: ' + error.message);
               });
@@ -1001,14 +1046,19 @@ const launch = (event) => {
                   const worldDraw = await worldClient.draw(
                     Math.min(0.1, (now - lastWorldFrame) / 1000),
                   );
-                  if (worldDraw) window.worldStatus = worldDraw;
+                  if (worldDraw) {
+                    window.worldStatus = worldDraw;
+                    worldLoading?.dispose();
+                    worldLoading = null;
+                  }
                 } catch (error) {
                   console.warn('World: ' + error.message);
                   worldClient.dispose();
                   worldClient = null;
                   await window.uiInput({ kind: 14, operation: 'error', message: error.message });
                 }
-              } else clearScene();
+              } else if (worldLoading) worldLoading.draw();
+              else clearScene();
               lastWorldFrame = now;
             } else if (isCharacterScreen(window.uiInputState)) {
               drawCharacter(window.uiInputState);
@@ -1027,8 +1077,10 @@ const launch = (event) => {
             }
             if (window.worldStatus?.phase === 'world' && window.uiInputState?.world_entry)
               worldHUD?.draw();
-            uiRenderer.draw();
-            softwareCursor?.draw();
+            if (!worldLoading) {
+              uiRenderer.draw();
+              softwareCursor?.draw();
+            }
             if (!creditsScreen && !window.uiInputState?.world_entry)
               audio?.frame(clocks.sequenceMs, clocks.globalMs);
             window.animationStatus = {
@@ -1144,6 +1196,11 @@ window.addEventListener(
   'keydown',
   (event) => {
     if (event.altKey && event.key === 'Enter') return;
+    if (window.worldStatus?.loadingScreen) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (event.code === 'Space' && window.uiInputState?.world_entry) return;
     const key = { Escape: 'ESCAPE', Enter: 'ENTER', ' ': 'SPACE' }[event.key];
     // A held confirmation key must not become Enter World after a modal closes.

@@ -1,7 +1,9 @@
 /* Bounded BLP2 paletted/BC1/BC2/BC3 base-mip decoder. */
 typedef unsigned char u8;
 typedef unsigned int u32;
-static u8 input[1048576], rgba[512 * 512 * 4];
+#define INPUT_CAPACITY (4 * 1024 * 1024)
+#define IMAGE_EDGE 1024
+static u8 input[INPUT_CAPACITY], rgba[IMAGE_EDGE * IMAGE_EDGE * 4];
 static u32 width, height;
 u8 *input_ptr(void) {
   return input;
@@ -29,12 +31,12 @@ static void rgb565(u32 v, u32 *rgb) {
 }
 u32 decode_blp(u32 n) {
   width = height = 0;
-  if (n < 148 || n > 1048576)
+  if (n < 148 || n > INPUT_CAPACITY)
     return 1;
   if (le(0, 4) == 0x32504c42 && le(4, 4) == 1 && input[8] == 1) {
     u32 w = le(12, 4), h = le(16, 4), off = le(20, 4), size = le(84, 4), depth = input[9];
-    if (n < 1172 || !w || !h || w > 512 || h > 512 || (w & (w - 1)) || (h & (h - 1)) ||
-        (depth != 0 && depth != 1 && depth != 4 && depth != 8))
+    if (n < 1172 || !w || !h || w > IMAGE_EDGE || h > IMAGE_EDGE || (w & (w - 1)) ||
+        (h & (h - 1)) || (depth != 0 && depth != 1 && depth != 4 && depth != 8))
       return 3;
     u32 count = w * h, alphaBytes = (count * depth + 7) / 8;
     if (off < 1172 || off > n || size > n - off || size != count + alphaBytes)
@@ -63,7 +65,8 @@ u32 decode_blp(u32 n) {
   /* Owner terrain assets also use mip marker 2. It is not an encoding
    * selector or a reliable Boolean. Only the base mip is consumed here;
    * its dimensions, byte count and source range are validated below. */
-  if (!w || !h || w > 512 || h > 512 || (w & (w - 1)) || (h & (h - 1)) || w % 4 || h % 4)
+  if (!w || !h || w > IMAGE_EDGE || h > IMAGE_EDGE || (w & (w - 1)) || (h & (h - 1)) || w % 4 ||
+      h % 4)
     return 3;
   u32 step = input[9] <= 1 ? 8 : 16;
   if (size != (w / 4) * (h / 4) * step || off < 148 || off > n || size > n - off)

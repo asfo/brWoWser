@@ -6,6 +6,15 @@ uint32_t normals_ptr(void) {
 }
 static float camera_view[16];
 static uint32_t camera_enabled;
+static float upper_cos = 1, upper_sin;
+uint32_t set_upper_body(float cosine, float sine) {
+  if (!__builtin_isfinite(cosine) || !__builtin_isfinite(sine) ||
+      __builtin_fabsf(cosine * cosine + sine * sine - 1) > .001f)
+    return 1;
+  upper_cos = cosine;
+  upper_sin = sine;
+  return 0;
+}
 uint32_t view_ptr(void) {
   return (uint32_t)(uintptr_t)camera_view;
 }
@@ -192,6 +201,24 @@ static int evaluate(uint32_t i) {
           sum += (double)local[r * 4 + k] * matrices[parent * 16 + k * 4 + c];
         out[r * 4 + c] = (float)sum;
       }
+  /* Key bone 4 is the lower spine. Counter-rotate this branch around its
+   * animated pivot, keeping the torso/arms/head forward while the waist and
+   * legs inherit the travel-facing root. Attached items inherit the same pose. */
+  if (u32(model, b) == 4 && (upper_cos != 1 || upper_sin != 0)) {
+    float pivot[3], center[3];
+    for (uint32_t j = 0; j < 3; j++)
+      pivot[j] = f32(model, b + 76 + j * 4);
+    for (uint32_t j = 0; j < 3; j++)
+      center[j] = out[12 + j] + pivot[0] * out[j] + pivot[1] * out[4 + j] + pivot[2] * out[8 + j];
+    for (uint32_t column = 0; column < 3; column++) {
+      float x = out[column * 4], y = out[column * 4 + 1];
+      out[column * 4] = upper_cos * x - upper_sin * y;
+      out[column * 4 + 1] = upper_sin * x + upper_cos * y;
+    }
+    float x = out[12] - center[0], y = out[13] - center[1];
+    out[12] = center[0] + upper_cos * x - upper_sin * y;
+    out[13] = center[1] + upper_sin * x + upper_cos * y;
+  }
   if (billboard) {
     /* Spherical billboards face the camera in model space, preserving their
      * animated world pivot and inherited scale. Children inherit this basis. */

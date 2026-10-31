@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { runClang, version } from '../../tools/compiler.mjs';
 const source = await readFile(new URL('bones.c', import.meta.url)),
   exports = [
+    'set_upper_body',
     'set_normalizer',
     'view_ptr',
     'set_camera',

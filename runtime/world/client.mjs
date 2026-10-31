@@ -20,6 +20,7 @@ export async function createWorldClient({
   onIssue = console.warn,
   isCurrent = () => true,
   onProgress = () => {},
+  onLoadingScreen = async () => {},
 }) {
   let disposed = false,
     player,
@@ -96,8 +97,11 @@ export async function createWorldClient({
   }
   try {
     await source.world('init', { wasm: modules.world });
+    await onLoadingScreen();
+    await onProgress({ phase: 'resources', progress: 0.05 });
     await source.world('spawn', { position: entry.location.position });
     await source.world('environment');
+    await onProgress({ phase: 'environment', progress: 0.15 });
     try {
       await source.world('audio-init');
       zoneAudio = createWorldAudio(source, { settings: audioSettings, onIssue });
@@ -321,6 +325,7 @@ export async function createWorldClient({
       throw Error('World loading cancelled');
     }
     player = preview;
+    await onProgress({ phase: 'player', progress: 0.35 });
     const controls = () => [
       Number(keys.has('KeyW') || keys.has('ArrowUp')) -
         Number(keys.has('KeyS') || keys.has('ArrowDown')),
@@ -438,21 +443,23 @@ export async function createWorldClient({
         }
       return Promise.all(jobs);
     }
-    onProgress({ phase: 'terrain' });
+    await onProgress({ phase: 'terrain', progress: 0.4 });
     const initial = await sample(0);
     await loadTile(initial.tiles[0], initial.tiles[1], true);
     // Warm the required camera/player tiles first. Neighbors stream during
     // presentation instead of delaying entry behind nine complete texture sets.
     await loadTile(initial.tiles[2], initial.tiles[3], true);
-    onProgress({ phase: 'scene' });
+    await onProgress({ phase: 'scene', progress: 0.65 });
     const warmed = await sample(0);
     await prepareVisible(warmed);
     await prepareVisible(await sample(0));
+    await onProgress({ phase: 'collision', progress: 0.85 });
     await prepareCollision(await sample(0));
     if (disposed || !isCurrent()) throw Error('World loading cancelled');
     lastCompleteState = warmed;
     await source.world('movement-begin');
     await send({ operation: 'ready' });
+    await onProgress({ phase: 'ready', progress: 1 });
     loadMilliseconds = Math.round(performance.now() - started);
     let orbiting = false;
     listen(
@@ -687,6 +694,7 @@ export async function createWorldClient({
             elapsed: view.globalMs,
             facing: state.player[6],
             moving: state.player[5],
+            upperBody: state.player.subarray(8, 10),
             viewState: view,
             placement: state.placement,
             clear: false,

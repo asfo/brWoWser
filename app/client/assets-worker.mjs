@@ -39,6 +39,22 @@ async function worldOperation(data) {
       };
     });
   };
+  if (data.operation === 'loading-screen') {
+    if (world.world_loading_map(await load('DBFilesClient/Map.dbc'), data.map))
+      throw Error('Loading-screen map record rejected');
+    if (world.world_loading_screen(await load('DBFilesClient/LoadingScreens.dbc')))
+      throw Error('Loading-screen record rejected');
+    const path = new Uint8Array(world.memory.buffer, world.world_loading_path(), 256);
+    return {
+      path: new TextDecoder().decode(path.subarray(0, path.indexOf(0))),
+      wide: !!world.world_loading_wide(),
+    };
+  }
+  if (data.operation === 'loading-layout') {
+    const pointer = world.world_loading_layout(data.width, data.height, data.progress);
+    if (!pointer) throw Error('Loading-screen layout rejected');
+    return { quads: floats(pointer, 96).slice() };
+  }
   if (data.operation === 'movement-begin') {
     world.world_movement_begin();
     return {};
@@ -293,7 +309,7 @@ async function worldOperation(data) {
     }
     const skyStatus = world.world_environment(data.map, data.time, data.globalMs);
     return {
-      player: floats(world.world_player(), 8).slice(),
+      player: floats(world.world_player(), 10).slice(),
       movement,
       area: world.world_area(),
       audio: audioState(),

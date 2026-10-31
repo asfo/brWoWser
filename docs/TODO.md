@@ -35,10 +35,11 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 - [ ] Manually validate the new selected-character world-entry path and retry/disconnect recovery.
 - [ ] Manually validate initial outdoor terrain, WMO/static decoration and character placement; finish water, sky, lighting, collision and animated scenery.
 - [x] Add initial static M2/WMO triangle collision and directional locomotion clips in WASM.
-- [ ] Manually validate walls, stairs, bridges, Q/E and diagonal/backward movement; finish race-specific capsules, native blending, camera collision, swimming and transports. Manually compare the initial gravity/jump/landing implementation.
+- [ ] Manually validate walls, stairs, bridges, Q/E and diagonal/backward movement; finish race-specific capsules, native blending, camera smoothing, swimming and transports. Manually compare the initial gravity/jump/landing implementation.
 - [x] Add initial area music and ambience using source tables and native selection.
 - [ ] Add footsteps, combat/positional sounds, weather, occlusion/reverb and live audio preferences; verify native day/night and music scheduling.
-- [ ] Add original loading-screen artwork and progress presentation.
+- [x] Add original loading-screen artwork and resource-stage progress inside the canvas.
+- [ ] Manually compare loading composition/wide variants, camera wall clearance and jump landing; support map-transfer loading and native tips.
 - [ ] Implement authoritative world objects and position reconciliation.
 - [ ] Compare race introductions, sky/cloud rendering, WMO decoration, particles, narration and skip-to-player handoff against the native client.
 - [x] Load the initial selected original FrameXML/Lua dependency closure in a separate C/WASM VM and draw player/main-menu artwork inside the game canvas.

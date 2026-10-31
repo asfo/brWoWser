@@ -197,6 +197,7 @@ export async function createCharacterPreview({
         placement = identityPlacement,
         viewState,
         moving = false,
+        upperBody = [1, 0],
       } = {}) {
         if (disposed || gl.isContextLost()) throw Error('Character preview is unavailable');
         if (
@@ -255,7 +256,7 @@ export async function createCharacterPreview({
             row ? row.slice(10, 13).map((value) => value * row[9]) : [0.45, 0.45, 0.45],
           );
         }
-        model.motion(moving, elapsed);
+        model.motion(moving, elapsed, upperBody);
         if (model.animated) {
           gl.bindBuffer(gl.ARRAY_BUFFER, positions);
           gl.bufferSubData(

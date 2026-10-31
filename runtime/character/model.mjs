@@ -461,7 +461,12 @@ export async function loadCharacterModel({
         movementClips.get(moving) || movementClips.get(5) || movementClips.values().next().value;
       const clock = moving && runPose ? clip.duration : duration;
       const sequenceMs = moving ? Math.max(0, ms - motionStart) : ms;
-      cachedPose = runtime?.sample(clock ? sequenceMs % clock : 0, ms, view);
+      const clockMs = clock
+        ? [37, 39].includes(moving)
+          ? Math.min(sequenceMs, clock)
+          : sequenceMs % clock
+        : 0;
+      cachedPose = runtime?.sample(clockMs, ms, view);
       if (view && cachedPose && !warnedUnsupportedPose && cachedPose.vertexValid.some((v) => !v)) {
         warnedUnsupportedPose = true;
         onIssue(
@@ -493,7 +498,8 @@ export async function loadCharacterModel({
         16,
       ).slice();
     },
-    motion(value, elapsedMs = 0) {
+    motion(value, elapsedMs = 0, upperBody = [1, 0]) {
+      runPose?.setUpperBody(upperBody[0], upperBody[1]);
       const animation = typeof value === 'boolean' ? (value ? 5 : 0) : value;
       if (![0, 5, 13, 37, 38, 39, 40].includes(animation))
         throw Error('Unsupported locomotion animation');

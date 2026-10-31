@@ -10,6 +10,9 @@ export async function createBonePoseRuntime(wasm, model, prepared, { normalizer 
   new Uint8Array(e.memory.buffer, e.model_ptr(), model.byteLength).set(model);
   new Uint8Array(e.memory.buffer, e.prepared_ptr(), prepared.byteLength).set(prepared);
   return {
+    setUpperBody(cosine = 1, sine = 0) {
+      if (e.set_upper_body(cosine, sine)) throw Error('Upper-body orientation rejected');
+    },
     setModel(bytes) {
       if (!(bytes instanceof Uint8Array) || bytes.length < 0x138 || bytes.length > 8388608)
         throw Error('pose model capacity');

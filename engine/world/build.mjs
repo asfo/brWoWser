@@ -2,6 +2,11 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { runClang } from '../../tools/compiler.mjs';
 const source = await readFile(new URL('../../runtime/world/world.c', import.meta.url));
 const exports = [
+  'world_loading_map',
+  'world_loading_screen',
+  'world_loading_path',
+  'world_loading_wide',
+  'world_loading_layout',
   'world_movement_output',
   'world_movement_next',
   'world_movement_clock',
@@ -91,6 +96,7 @@ const output = await runClang(
     'world.c',
     'collision.c',
     'audio.c',
+    'loading.c',
     '-lm',
   ],
   {
@@ -98,6 +104,8 @@ const output = await runClang(
     'collision.c': await readFile(new URL('../../runtime/world/collision.c', import.meta.url)),
     'collision.h': await readFile(new URL('../../runtime/world/collision.h', import.meta.url)),
     'audio.c': await readFile(new URL('../../runtime/world/audio.c', import.meta.url)),
+    'loading.c': await readFile(new URL('../../runtime/world/loading.c', import.meta.url)),
+    'loading.h': await readFile(new URL('../../runtime/world/loading.h', import.meta.url)),
     'audio.h': await readFile(new URL('../../runtime/world/audio.h', import.meta.url)),
   },
 );

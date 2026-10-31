@@ -50,10 +50,17 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - The WASM world module admits source M2 bounding triangles and WMO collision/render faces, transforms instance geometry, performs capsule/triangle checks, samples walkable model surfaces and integrates short movement steps with sliding. Nearby collision loading is independent of the render frustum; nearby WMO interior geometry can also be drawn.
 - A bounded owner-resource preparation around Northshire admitted 57 collision meshes / 165 instances containing 9,643 triangles from the selected nearby records, including nine WMO groups. This is asset admission evidence; movement behavior remains manually validated.
 - WASM resolves source area inheritance and SoundEntries file selection for music/ambience/intro channels. The browser supplies media decoding/output without blocking world frame delivery. Northshire's source data resolved music 2523 and ambience 4183 during local preparation.
-- Ground movement sweeps the capsule onto stair edges and slopes. Q/E uses running clips with travel-facing rotation, while network facing remains independent. WASM integrates jump/gravity/landing and queues movement snapshots for the network boundary. Turn-left, turn-right, jump and landing use their distinct protocol opcodes. These changes still require manual comparison.
+- Ground movement sweeps the capsule onto stair edges and slopes. Q/E uses running clips with travel-facing legs and a lower-spine counter-rotation that keeps the torso forward, while network facing remains independent. WASM integrates jump/gravity/landing and queues movement snapshots for the network boundary. Turn-left, turn-right, jump and landing use their distinct protocol opcodes. These changes still require manual comparison.
 - World music/ambience reads run separately from terrain decompression. Browser playback state is exposed in `window.worldStatus.audioPlayback`; blocked WebAudio contexts resume on trusted user interaction.
 - World locomotion reuses one movement pose VM across the admitted source clips rather than allocating another full VM for every direction.
 - The model-light argument regression introduced with the FrameXML type extension is corrected: the native bridge reads exactly the 13 supplied light values using the array's length.
+
+## Loading presentation and follow camera
+
+- Source Map field 57 resolves LoadingScreens artwork. Original wide variants and loading-bar background/fill/border textures are decoded by the C BLP decoder, including 1024-pixel artwork.
+- WASM supplies loading-screen quads and monotonic progress; the browser submits those quads to the same WebGL canvas. Resource stages update the bar without fabricated time-based advancement. The screen remains until the first world frame, including when an introduction starts.
+- The follow camera contracts its orbit against admitted static collision faces and terrain; it does not change the user's requested zoom distance. Normal jump descent no longer selects the ledge/free-fall clip.
+- Compilation and bounded owner-asset admission do not establish native visual equivalence. Loading composition, torso/leg orientation, landing and camera behavior require manual review.
 
 ## Current review
 
