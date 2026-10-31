@@ -39,10 +39,19 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 ## Initial in-game FrameXML shell
 
 - A dedicated world-UI worker owns a separate C/Lua VM from the login session. It reads the owner-local `FrameXML.toc` and a bounded dependency closure; original sources stay outside Git.
-- The first profile loads 32 original Lua/XML resources, fonts and textures for `WorldFrame`, `UIParent`, the player-frame artwork and the lower main-menu artwork. A bounded local source import produced 253 objects and 26 draw commands without geometry/text issues; browser appearance remains unverified.
+- The selected profile now includes original Minimap.xml/Lua alongside WorldFrame, UIParent, PlayerFrame and MainMenuBar. Component lifecycle activation remains deferred; source import and browser appearance are separate validation steps.
 - C/WASM owns frame composition, font rasterization, StatusBar geometry and the initial unit identity APIs. Name, level, race, class, sex and GUID come from the authenticated roster and client metadata.
 - The shell appears after the introduction ends or is skipped, inside the existing canvas. It remains hidden during the introduction. Loading failures are isolated from the world connection and exposed through `window.worldUIStatus`.
-- General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, unit state, portrait generation, action buttons, chat and menu interaction remain unfinished.
+- General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, action buttons, chat and menu interaction remain unfinished.
+
+## Player portrait, resource bars and minimap
+
+- A bounded C decoder reads raw/compressed build-12340 object updates and commits the local player's fields only after the complete packet parses. Creation initializes omitted fields to their protocol-defined zero values. Unsupported packets preserve the previous snapshot instead of closing the connection; `window.worldUnitStatus` exposes the latest decoder status.
+- C/Lua APIs expose known health/max health and the active power pool/type. The original health/resource StatusBars receive these server values, including rage/runic-power scaling. This is selected-player state, not general object/NPC reconstruction.
+- The owner character model supplies a cached 3D head portrait rendered to a small GPU surface. Camera/pose preparation stays in WASM and no pixels are read back to JavaScript. Native portrait framing/lighting still needs manual comparison.
+- WASM resolves the owner md5translate.trs map index, nine nearby minimap textures, north-up coordinates and the initial direction marker. Original FrameXML supplies minimap placement/artwork. Zoom buttons, tracking, POIs, indoor WMO minimaps and world-map interaction are pending.
+- World previews use Item.dbc sheathe types and the model's matching storage attachments. Combat-driven unsheathing/equipment changes remain pending.
+- World rendering may present at up to 60 FPS. Scene decoding/simulation uses a worker separate from character/portrait/minimap texture reads; inactive character-selector ticks no longer run behind the world. Native locomotion blending and sustained frame pacing remain under review.
 
 ## Static collision and initial world audio
 

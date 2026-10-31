@@ -55,6 +55,9 @@ uint32_t world_ui_player(uint32_t low, uint32_t high, uint32_t race, uint32_t cl
 uint32_t world_ui_text(uint32_t field, uint32_t length) {
   return length > CAPACITY ? 1 : bw_world_ui_text(field, input, length);
 }
+uint32_t world_ui_state(uint32_t length) {
+  return length > CAPACITY ? 1 : bw_world_ui_state(input, length);
+}
 uint32_t world_ui_clock(double seconds) {
   return bw_world_ui_clock(seconds);
 }

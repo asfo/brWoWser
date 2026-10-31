@@ -55,6 +55,16 @@ async function worldOperation(data) {
     if (!pointer) throw Error('Loading-screen layout rejected');
     return { quads: floats(pointer, 96).slice() };
   }
+  if (data.operation === 'minimap-init') {
+    if (!/^[A-Za-z0-9_]{1,63}$/.test(data.directory)) throw Error('Invalid minimap directory');
+    const b = new TextEncoder().encode(data.directory);
+    const out = new Uint8Array(world.memory.buffer, world.world_minimap_directory(), 64);
+    out.fill(0);
+    out.set(b);
+    if (world.world_minimap_index(await load('Textures/Minimap/md5translate.trs')))
+      throw Error('Minimap source index rejected');
+    return {};
+  }
   if (data.operation === 'movement-begin') {
     world.world_movement_begin();
     return {};
@@ -307,9 +317,15 @@ async function worldOperation(data) {
         },
       });
     }
+    const minimap = { vertices: floats(world.world_minimap_sample(), 228).slice(), paths: [] };
+    for (let i = 0; i < 9; i++) {
+      const path = new Uint8Array(world.memory.buffer, world.world_minimap_paths() + i * 64, 64);
+      minimap.paths.push(new TextDecoder().decode(path.subarray(0, path.indexOf(0))));
+    }
     const skyStatus = world.world_environment(data.map, data.time, data.globalMs);
     return {
       player: floats(world.world_player(), 10).slice(),
+      minimap,
       movement,
       area: world.world_area(),
       audio: audioState(),

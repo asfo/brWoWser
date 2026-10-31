@@ -8,6 +8,9 @@ listen((message) => {
       if (message.kind === 'open') {
         if (session) throw Error('World UI session already opened');
         session = await openWorldUI(message.args);
+      } else if (message.kind === 'unit') {
+        if (!session) throw Error('World UI session is not ready');
+        session.updateUnit(message.unit);
       } else if (message.kind === 'resize') {
         if (!session) throw Error('World UI session is not ready');
         session.resize(message.width, message.height);

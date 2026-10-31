@@ -22,7 +22,10 @@ export async function createWorldHUD({
   let worker,
     renderer,
     disposed = false,
-    serial = 0;
+    serial = 0,
+    unitRevision = -1,
+    renderSerial = 0,
+    currentRects;
   const pending = new Map();
   const checkCurrent = () => {
     if (disposed || !isCurrent()) throw Error('World UI loading cancelled');
@@ -107,6 +110,7 @@ export async function createWorldHUD({
       },
     });
     checkCurrent();
+    currentRects = snapshot.rects;
     renderer = await createUIRenderer(gl, snapshot.packet, images, {
       logicalWidth: width,
       logicalHeight: height,
@@ -117,11 +121,39 @@ export async function createWorldHUD({
     onStatus({ phase: 'ready', ...snapshot, packet: undefined, issues: renderer.issues });
     return {
       dispose,
+      get rects() {
+        return currentRects;
+      },
+      async updateUnit(unit) {
+        if (!unit || unit.revision === unitRevision) return;
+        unitRevision = unit.revision;
+        const mine = ++renderSerial;
+        const next = await call({ kind: 'unit', unit });
+        checkCurrent();
+        const replacement = await createUIRenderer(gl, next.packet, images, {
+          logicalWidth: width,
+          logicalHeight: height,
+          textureCache,
+          glyphAtlas,
+        });
+        if (disposed || !isCurrent() || mine !== renderSerial) {
+          replacement.dispose();
+          return;
+        }
+        renderer.dispose();
+        renderer = replacement;
+        currentRects = next.rects;
+        onStatus({ phase: 'ready', ...next, packet: undefined, issues: renderer.issues });
+      },
       draw() {
         if (!disposed) renderer.draw();
       },
       async resize(w, h) {
+        const mine = ++renderSerial;
         const next = await call({ kind: 'resize', width: w, height: h });
+        width = w;
+        height = h;
+        currentRects = next.rects;
         checkCurrent();
         const replacement = await createUIRenderer(gl, next.packet, images, {
           logicalWidth: w,
@@ -129,7 +161,7 @@ export async function createWorldHUD({
           textureCache,
           glyphAtlas,
         });
-        if (disposed || !isCurrent()) {
+        if (disposed || !isCurrent() || mine !== renderSerial) {
           replacement.dispose();
           return;
         }

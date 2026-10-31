@@ -547,7 +547,7 @@ static const char *type_names[] = {
 static uint32_t type_id(const char *s) {
   /* WorldFrame has frame semantics here; the outdoor WASM renderer supplies
    * its scene behind the UI instead of creating another browser surface. */
-  if (!strcmp(s, "WorldFrame"))
+  if (!strcmp(s, "WorldFrame") || !strcmp(s, "Minimap"))
     return BW_UI_FRAME;
   for (uint32_t i = 0; i < 14; i++) {
     const char *a = s, *b = type_names[i];
@@ -3502,6 +3502,7 @@ void bw_ui_runtime_defer_lifecycle(BwUiRuntime *r) {
   if (r) {
     r->auto_load = 0;
     r->deferred_lifecycle = 1;
+    bw_ui_defer_function_bindings(r->L);
   }
 }
 void bw_ui_runtime_auto_load(BwUiRuntime *r, int enabled) {

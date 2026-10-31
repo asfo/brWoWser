@@ -48,10 +48,10 @@
 ## In-game FrameXML
 
 - The initial profile loads a selected dependency closure, not every entry in `FrameXML.toc`. `window.worldUIStatus` reports resource counts, deferred components and import/render issues.
-- Player/main-menu artwork and player name/level can be drawn after the introduction. The portrait, health/power/XP values, action buttons, chat, minimap and in-game menus are not implemented yet.
-- General world component lifecycles and interaction remain deferred until their APIs and real server state are available. The static shell does not imply that clicking its artwork performs game actions.
+- Player/main-menu/minimap artwork, a cached 3D portrait and selected server health/resource values can be drawn after the introduction. Portrait framing, resource formatting and minimap composition still require manual comparison. XP, action buttons, chat and in-game menus remain unfinished.
+- General world component lifecycles and interaction remain deferred until their APIs and real server state are available. The artwork does not imply that clicking it performs game actions. The minimap currently supports terrain presentation and a direction marker; zoom/tracking/POI/world-map interactions and indoor WMO maps are pending.
 - StatusBar supports source bar textures/colors and bounded min/max/value fill geometry. Additional orientation/reverse-fill behavior and full native StatusBar event semantics still need implementation.
-- The initial player snapshot comes from character enumeration. Live unit/object fields and reconciliation are the next prerequisite for functional health/resource displays.
+- Identity starts from character enumeration; health/resource bars use the decoded server player-field snapshot. General unit/object APIs, authoritative motion reconciliation and NPC reconstruction remain pending. `window.worldUnitStatus.decodeIssue` reports unsupported/malformed update packets without disconnecting the session.
 
 ## World audio and collision streaming
 
@@ -64,3 +64,5 @@
 - Loading artwork is selected from the owner Map/LoadingScreens tables, with a wide variant when supplied. Original loading-bar textures are drawn inside the canvas; WASM owns layout and monotonic progress. Progress represents completed resource stages, not original-client byte-level scheduling. It remains visible until the first world frame. Original visual comparison, seamless map transfers and a loading-time tips lifecycle remain pending.
 - Follow-camera collision queries nearby admitted static triangles with a small near-plane ray bundle, plus terrain clearance. Unloaded geometry, moving objects and exact native camera smoothing remain limitations.
 - Normal jumps retain the jump clip during descent; free-fall animation is reserved for walking off a ledge. Manual comparison of landing poses and height support remains pending.
+
+- Stored world weapons use source Item.dbc sheath types; live combat/equipment-driven changes are pending. Q/E limits the pelvis turn to 45 degrees and counter-rotates the upper spine; this remains an approximation of native locomotion blending. World presentation targets up to 60 FPS but streaming/CPU skinning can still reduce frame rate.

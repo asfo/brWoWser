@@ -5,7 +5,8 @@ export async function createCharacterAssetSource(files, config) {
     type: 'module',
   });
   const pending = new Map();
-  let audioWorker, audioReady;
+  let audioWorker, audioReady, worldWorker, worldReady;
+  const worldPending = new Map();
   const audioPending = new Map();
   let serial = 0,
     closed = false;
@@ -13,6 +14,12 @@ export async function createCharacterAssetSource(files, config) {
     closed = true;
     worker.terminate();
     audioWorker?.terminate();
+    worldWorker?.terminate();
+    for (const job of worldPending.values()) {
+      clearTimeout(job.timer);
+      job.reject(error);
+    }
+    worldPending.clear();
     for (const job of audioPending.values()) {
       clearTimeout(job.timer);
       job.reject(error);
@@ -86,6 +93,42 @@ export async function createCharacterAssetSource(files, config) {
     await audioReady;
     return new Uint8Array((await audioCall({ kind: 'bytes', path })).bytes);
   }
+  async function worldCall(operation, data) {
+    if (closed) throw Error('Character asset source is closed');
+    function request(message) {
+      return new Promise((resolve, reject) => {
+        const id = ++serial;
+        const timer = setTimeout(() => {
+          worldPending.delete(id);
+          reject(Error('World resource deadline'));
+        }, 60000);
+        worldPending.set(id, { resolve, reject, timer });
+        worldWorker.postMessage({ id, ...message });
+      });
+    }
+    if (!worldReady) {
+      worldWorker = new Worker(new URL('../../app/client/assets-worker.mjs', import.meta.url), {
+        type: 'module',
+      });
+      worldWorker.onmessage = ({ data }) => {
+        const job = worldPending.get(data.id);
+        if (!job) return;
+        worldPending.delete(data.id);
+        clearTimeout(job.timer);
+        data.error ? job.reject(Error(data.error)) : job.resolve(data.result);
+      };
+      worldWorker.onerror = (event) => {
+        for (const job of worldPending.values()) {
+          clearTimeout(job.timer);
+          job.reject(Error(event.message || 'World worker failed'));
+        }
+        worldPending.clear();
+      };
+      worldReady = request({ kind: 'init', files, ...config });
+    }
+    await worldReady;
+    return request({ kind: 'world', operation, ...data });
+  }
   const cache = new Map();
   function asset(kind, path) {
     if (
@@ -108,7 +151,7 @@ export async function createCharacterAssetSource(files, config) {
     readAudio,
     readAsset: async (path) => new Uint8Array((await asset('bytes', path)).bytes),
     decodeTexture: (path) => asset('texture', path),
-    world: (operation, data = {}) => call({ kind: 'world', operation, ...data }),
+    world: (operation, data = {}) => worldCall(operation, data),
     dispose() {
       cache.clear();
       fail(Error('Character asset source closed'));

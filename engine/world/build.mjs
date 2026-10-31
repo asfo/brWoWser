@@ -2,6 +2,10 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { runClang } from '../../tools/compiler.mjs';
 const source = await readFile(new URL('../../runtime/world/world.c', import.meta.url));
 const exports = [
+  'world_minimap_directory',
+  'world_minimap_index',
+  'world_minimap_sample',
+  'world_minimap_paths',
   'world_loading_map',
   'world_loading_screen',
   'world_loading_path',
@@ -97,6 +101,7 @@ const output = await runClang(
     'collision.c',
     'audio.c',
     'loading.c',
+    'minimap.c',
     '-lm',
   ],
   {
@@ -105,6 +110,8 @@ const output = await runClang(
     'collision.h': await readFile(new URL('../../runtime/world/collision.h', import.meta.url)),
     'audio.c': await readFile(new URL('../../runtime/world/audio.c', import.meta.url)),
     'loading.c': await readFile(new URL('../../runtime/world/loading.c', import.meta.url)),
+    'minimap.c': await readFile(new URL('../../runtime/world/minimap.c', import.meta.url)),
+    'minimap.h': await readFile(new URL('../../runtime/world/minimap.h', import.meta.url)),
     'loading.h': await readFile(new URL('../../runtime/world/loading.h', import.meta.url)),
     'audio.h': await readFile(new URL('../../runtime/world/audio.h', import.meta.url)),
   },

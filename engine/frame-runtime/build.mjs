@@ -91,6 +91,7 @@ const exports = [
   'world_ui_player',
   'world_ui_text',
   'world_ui_clock',
+  'world_ui_state',
   'frame_template_mode',
   'frame_defer_lifecycle',
   'frame_model_parameter',

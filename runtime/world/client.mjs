@@ -1,3 +1,4 @@
+import { createWorldOverlays } from './overlay_renderer.mjs';
 import { createWorldAudio } from '../audio/world_audio.mjs';
 import { parseDBC } from '../character/catalog.mjs';
 import { createCharacterPreview } from '../character/renderer.mjs';
@@ -25,6 +26,8 @@ export async function createWorldClient({
   let disposed = false,
     player,
     skyRenderer,
+    overlays,
+    portraitTexture,
     cinematic,
     voice,
     zoneAudio,
@@ -85,6 +88,7 @@ export async function createWorldClient({
     for (const remove of listeners) remove();
     player?.dispose();
     skyRenderer?.dispose();
+    overlays?.dispose();
     for (const tile of tiles.values()) tile.renderer?.dispose();
     for (const structure of structures.values())
       for (const renderer of structure.renderers) renderer.dispose();
@@ -120,6 +124,7 @@ export async function createWorldClient({
     if (row === undefined) throw Error('The server selected a map absent from the client');
     const name = maps.text(row, 1);
     if (!/^[A-Za-z0-9_]+$/.test(name)) throw Error('Invalid map directory');
+    await source.world('minimap-init', { directory: name });
     const prefix = 'World\\Maps\\' + name + '\\' + name;
     const wdt = await source.readAsset(prefix + '.wdt');
     const wdtView = new DataView(wdt.buffer, wdt.byteOffset, wdt.byteLength);
@@ -325,6 +330,12 @@ export async function createWorldClient({
       throw Error('World loading cancelled');
     }
     player = preview;
+    overlays = createWorldOverlays(gl, source, onIssue);
+    try {
+      portraitTexture = player.createPortraitTexture();
+    } catch (error) {
+      onIssue('Portrait: ' + error.message);
+    }
     await onProgress({ phase: 'player', progress: 0.35 });
     const controls = () => [
       Number(keys.has('KeyW') || keys.has('ArrowUp')) -
@@ -582,6 +593,9 @@ export async function createWorldClient({
           needsHandoff = true;
         }
       },
+      drawOverlays(rects, width, height) {
+        overlays?.draw(rects, width, height, portraitTexture);
+      },
       async draw(elapsed) {
         if (disposed) return;
         if (collisionError) throw collisionError;
@@ -646,6 +660,7 @@ export async function createWorldClient({
           }
         } else if (modal) voice?.pause();
         zoneAudio?.sync(cinematic ? null : state.audio);
+        overlays?.update(state.minimap);
         const view = {
           view: state.view.subarray(0, 16),
           projection: state.view.subarray(16, 32),

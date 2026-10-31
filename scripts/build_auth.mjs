@@ -7,6 +7,7 @@ const root = new URL('../', import.meta.url);
 const files = Object.fromEntries(
   await Promise.all(
     [
+      'world_updates.c',
       'srp.c',
       'warden_transfer.c',
       'warden_inflate.c',
@@ -22,6 +23,13 @@ const files = Object.fromEntries(
       'warden_checks.c',
     ].map(async (name) => [name, await readFile(new URL('runtime/network/' + name, root))]),
   ),
+);
+// Reuse the bounded C DEFLATE decoder with a separate world-packet buffer.
+files['world_inflate.c'] = Buffer.from(
+  '#define input_ptr bw_update_input\n#define output_ptr bw_update_output\n#define output_size bw_update_size\n#define decode_zlib bw_update_inflate\n#define decode_mpq bw_update_mpq\n' +
+    (await readFile(new URL('engine/mpq-sector-wasm/decoder.c', root), 'utf8'))
+      .replaceAll('8192', '1048576')
+      .replaceAll('4096', '1048576'),
 );
 Object.assign(files, await x86Sources());
 // Keep upstream diagnostic noise scoped to third-party translation units.
@@ -61,6 +69,12 @@ else {
       '-Wl,-z,stack-size=65536',
       '-Wl,--max-memory=67108864',
       ...[
+        'bw_update_input',
+        'bw_world_unit_begin',
+        'bw_world_unit_update',
+        'bw_world_unit_values',
+        'bw_world_unit_known',
+        'bw_world_unit_revision',
         'bw_world_auth',
         'bw_warden_receive',
         'bw_warden_tick',
@@ -88,6 +102,8 @@ else {
       '-o',
       'auth.wasm',
       'srp.c',
+      'world_updates.c',
+      'world_inflate.c',
       'warden_cpu.c',
       'warden_memory.c',
       'warden_client_image.c',

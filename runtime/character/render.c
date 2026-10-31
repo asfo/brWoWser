@@ -188,7 +188,7 @@ static int normalize(float *v) {
   return 1;
 }
 uint32_t character_view(uint32_t authored, float aspect) {
-  if (authored > 2 || !isfinite(aspect) || aspect <= 0)
+  if (authored > 3 || !isfinite(aspect) || aspect <= 0)
     return 1;
   for (int i = 0; i < 16; i++)
     if (!isfinite(camera_input[i]))
@@ -197,11 +197,12 @@ uint32_t character_view(uint32_t authored, float aspect) {
   float height = fmaxf(.1f, camera_input[15] - camera_input[12]);
   /* Preserve the authored vertical framing. Cropping the vertical field on
    * wide screens also magnifies every character and clips tall races. */
-  float fov = authored == 2 ? camera_input[0] / sqrtf(1 + aspect * aspect)
-              : authored    ? camera_input[0] * .6f
-                            : .65f;
-  float near = authored ? camera_input[2] : .01f;
-  float far = authored ? camera_input[1] : height * 20;
+  float fov = authored == 3   ? .65f
+              : authored == 2 ? camera_input[0] / sqrtf(1 + aspect * aspect)
+              : authored      ? camera_input[0] * .6f
+                              : .65f;
+  float near = authored && authored != 3 ? camera_input[2] : .01f;
+  float far = authored && authored != 3 ? camera_input[1] : height * 20;
   if (!(fov > 0 && fov < 3.141593f && near > 0 && far > near))
     return 2;
   for (int i = 0; i < 3; i++) {
@@ -210,6 +211,10 @@ uint32_t character_view(uint32_t authored, float aspect) {
              : i == 0 ? height * 1.65f
              : i == 2 ? target[2] + height * .03f
                       : 0;
+    if (authored == 3) {
+      target[i] = camera_input[i];
+      eye[i] = target[i] + (i == 0 ? height * .5f : i == 2 ? height * .02f : 0);
+    }
     forward[i] = target[i] - eye[i];
   }
   if (!normalize(forward))
@@ -222,7 +227,7 @@ uint32_t character_view(uint32_t authored, float aspect) {
   up[0] = right[1] * forward[2] - right[2] * forward[1];
   up[1] = right[2] * forward[0] - right[0] * forward[2];
   up[2] = right[0] * forward[1] - right[1] * forward[0];
-  float roll = authored ? camera_input[9] : 0, c = cosf(roll), s = sinf(roll);
+  float roll = authored && authored != 3 ? camera_input[9] : 0, c = cosf(roll), s = sinf(roll);
   for (int i = 0; i < 3; i++) {
     float r = right[i], u = up[i];
     right[i] = r * c + u * s;

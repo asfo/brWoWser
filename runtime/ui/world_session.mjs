@@ -21,6 +21,18 @@ export async function openWorldUI({
   let e,
     lua,
     disposed = false;
+  const applyUnit = (unit) => {
+    if (!unit || unit.values?.length !== 160 || unit.known?.length !== 160) return;
+    input(new Uint8Array(new Uint32Array([...unit.values, ...unit.known]).buffer));
+    check(e.world_ui_state(1280), 'World UI unit state');
+    run(`local h,m=UnitHealth("player"),UnitHealthMax("player");
+      if h and m and m>0 then PlayerFrameHealthBar:SetMinMaxValues(0,m);PlayerFrameHealthBar:SetValue(h);PlayerFrameHealthBar:SetStatusBarColor(0,1,0);PlayerFrameHealthBarText:SetText(h.." / "..m) end
+      local p,max=UnitPower("player"),UnitPowerMax("player");local kind=UnitPowerType("player");
+      if p and max and max>0 then PlayerFrameManaBar:SetMinMaxValues(0,max);PlayerFrameManaBar:SetValue(p);
+        local colors={[0]={0,0,1},[1]={1,0,0},[2]={1,.5,.25},[3]={1,1,0},[4]={0,1,1},[5]={.5,.5,.5},[6]={0,.82,1}};local c=colors[kind] or colors[0];
+        PlayerFrameManaBar:SetStatusBarColor(c[1],c[2],c[3]);PlayerFrameManaBarText:SetText(p.." / "..max) end
+      PlayerLevelText:SetText(UnitLevel("player"));`);
+  };
   const encoder = new TextEncoder(),
     decoder = new TextDecoder();
   const text = (pointer) => {
@@ -145,13 +157,14 @@ export async function openWorldUI({
       check(e.loader_load(), entry.path);
     }
     e.frame_template_mode(0);
-    // Only identity already confirmed by the roster is presented. No synthetic
-    // health, XP, inventory, spell state or portrait is substituted.
+    // Start with roster identity. Health/resources are applied only from decoded
+    // server fields; general component lifecycles remain deferred.
     run(
       'PlayerName:SetText(UnitName("player"));PlayerLevelText:SetText(UnitLevel("player"));' +
         'PlayerRestIcon:Hide();PlayerAttackIcon:Hide();PlayerStatusTexture:Hide();' +
         'PlayerFrameManaBarText:SetText("");PlayerFrameHealthBarText:SetText("");' +
-        'MainMenuBarPageNumber:SetText(GetActionBarPage());BasicScriptErrors:Hide()',
+        'MainMenuBarPageNumber:SetText(GetActionBarPage());BasicScriptErrors:Hide();' +
+        'MinimapCompassTexture:Hide();MiniMapMailFrame:Hide();MiniMapBattlefieldFrame:Hide()',
     );
     for (const event of ['PLAYER_LOGIN', 'PLAYER_ENTERING_WORLD']) {
       name(event);
@@ -161,6 +174,7 @@ export async function openWorldUI({
       throw Error('World UI callback failed: ' + text(e.frame_protected_error()));
     return {
       dispose,
+      updateUnit: applyUnit,
       snapshot() {
         if (disposed) throw Error('World UI is closed');
         const items = readDrawList(e, { visibleOnly: true });
@@ -171,9 +185,15 @@ export async function openWorldUI({
           tocEntries: sources.toc.length,
           lifecycle: 'definitions-loaded',
           protectedFailures: e.frame_protected_failures(),
-          deferred: ['UIParent', 'PlayerFrame', 'MainMenuBar'],
+          rects: Object.fromEntries(
+            ['PlayerPortrait', 'Minimap'].map((name) => [
+              name,
+              items.find((row) => row.name === name)?.rect,
+            ]),
+          ),
+          deferred: ['UIParent', 'PlayerFrame', 'MainMenuBar', 'Minimap'],
           scope:
-            'Original selected FrameXML definitions and Lua, C/WASM layout and roster identity. General FrameXML lifecycle, unit fields and action APIs remain pending.',
+            'Original selected FrameXML definitions and Lua, C/WASM layout and roster identity. Selected server health/resource fields are applied explicitly; general FrameXML lifecycle, unit/action APIs and interaction remain pending.',
         };
       },
       resize(w, h) {

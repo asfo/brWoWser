@@ -45,6 +45,9 @@ export async function createCharacterPreview({
   function dispose() {
     if (disposed) return;
     disposed = true;
+    if (portraitTexture) gl.deleteTexture(portraitTexture);
+    if (portraitFramebuffer) gl.deleteFramebuffer(portraitFramebuffer);
+    if (portraitDepth) gl.deleteRenderbuffer(portraitDepth);
     particleRenderer?.dispose();
     for (const child of attachments) child.preview.dispose();
     for (const buffer of buffers) gl.deleteBuffer(buffer);
@@ -90,7 +93,7 @@ export async function createCharacterPreview({
       uniform bool fogEnabled;uniform vec3 fogColor;uniform vec2 fogRange;uniform int blendMode;
       uniform vec4 materialColor;
       uniform int pointCount;uniform vec3 pointPosition[16];uniform vec3 pointAmbient[16];uniform vec3 pointDiffuse[16];uniform vec2 pointRange[16];
-      uniform bool unlit;void main(){vec4 value=texture(image0,coords);
+      uniform vec3 portraitCircle;uniform bool unlit;void main(){if(portraitCircle.z>0.&&distance(gl_FragCoord.xy,portraitCircle.xy)>portraitCircle.z)discard;vec4 value=texture(image0,coords);
       if(layers==2)value*=texture(image1,coords1);value*=materialColor;
       // Opaque skin alpha is a material mask, not canvas transparency.
       if(blendMode==0)value.a=1.;if(value.a<alphaCutoff)discard;
@@ -184,6 +187,53 @@ export async function createCharacterPreview({
       attachment: (id, elapsed) => model.attachment(id, elapsed),
       lights: () => lastPointLights,
       dispose,
+      createPortraitTexture() {
+        if (portraitTexture) return portraitTexture;
+        const previous = gl.getParameter(gl.FRAMEBUFFER_BINDING),
+          viewport = gl.getParameter(gl.VIEWPORT);
+        try {
+          portraitTexture = gl.createTexture();
+          portraitFramebuffer = gl.createFramebuffer();
+          portraitDepth = gl.createRenderbuffer();
+          gl.bindTexture(gl.TEXTURE_2D, portraitTexture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 128, 128, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, portraitFramebuffer);
+          gl.framebufferTexture2D(
+            gl.FRAMEBUFFER,
+            gl.COLOR_ATTACHMENT0,
+            gl.TEXTURE_2D,
+            portraitTexture,
+            0,
+          );
+          gl.bindRenderbuffer(gl.RENDERBUFFER, portraitDepth);
+          gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, 128, 128);
+          gl.framebufferRenderbuffer(
+            gl.FRAMEBUFFER,
+            gl.DEPTH_ATTACHMENT,
+            gl.RENDERBUFFER,
+            portraitDepth,
+          );
+          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
+            throw Error('Portrait surface rejected');
+          gl.disable(gl.SCISSOR_TEST);
+          gl.clearColor(0, 0, 0, 0);
+          gl.depthMask(true);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          preview.draw({
+            portrait: true,
+            viewport: { left: 0, bottom: 0, width: 128, height: 128 },
+            clear: false,
+          });
+          return portraitTexture;
+        } finally {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, previous);
+          gl.viewport(...viewport);
+        }
+      },
       draw({
         elapsed = 0,
         facing = 0,
@@ -196,6 +246,7 @@ export async function createCharacterPreview({
         pointLights,
         placement = identityPlacement,
         viewState,
+        portrait = false,
         moving = false,
         upperBody = [1, 0],
       } = {}) {
@@ -228,7 +279,16 @@ export async function createCharacterPreview({
           particleView,
           view,
           eye,
-        } = viewState || model.view(viewport.width / viewport.height, camera, diagonalFraming);
+        } = viewState ||
+        (portrait
+          ? model.portraitView(viewport.width / viewport.height)
+          : model.view(viewport.width / viewport.height, camera, diagonalFraming));
+        gl.uniform3f(
+          location('portraitCircle'),
+          viewport.left + viewport.width / 2,
+          viewport.bottom + viewport.height / 2,
+          portrait ? viewport.width * 0.49 : 0,
+        );
         gl.uniformMatrix4fv(transform, false, matrix);
         gl.uniformMatrix4fv(location('placement'), false, placement);
         gl.uniform1f(facingLocation, facing);
@@ -256,16 +316,17 @@ export async function createCharacterPreview({
             row ? row.slice(10, 13).map((value) => value * row[9]) : [0.45, 0.45, 0.45],
           );
         }
-        model.motion(moving, elapsed, upperBody);
+        if (!portrait) model.motion(moving, elapsed, upperBody);
+        const portraitPose = portrait ? model.samplePortrait(view) : null;
         if (model.animated) {
           gl.bindBuffer(gl.ARRAY_BUFFER, positions);
           gl.bufferSubData(
             gl.ARRAY_BUFFER,
             0,
-            model.sample(elapsed, model.localView(view, placement)),
+            portraitPose?.positions || model.sample(elapsed, model.localView(view, placement)),
           );
           gl.bindBuffer(gl.ARRAY_BUFFER, normals);
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, model.animatedNormals());
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, portraitPose?.normals || model.animatedNormals());
         }
         lastPointLights = pointLights || model.pointLights(elapsed);
         gl.uniform1i(location('pointCount'), lastPointLights.length);
@@ -351,10 +412,9 @@ export async function createCharacterPreview({
           if (!model.metadata.isBackground && Math.floor(range.geoset / 100) === 17)
             eyeGlowTriangles += range.count / 3;
         }
-        const particleSample = model.sampleParticles(
-          elapsed,
-          model.localView(particleView, placement),
-        );
+        const particleSample = portrait
+          ? null
+          : model.sampleParticles(elapsed, model.localView(particleView, placement));
         let particleStats = { particles: 0, particle_batches: 0 };
         if (particleSample)
           particleStats = (particleRenderer ??= createParticleRenderer(gl, textures)).draw(
@@ -364,19 +424,20 @@ export async function createCharacterPreview({
         gl.depthMask(true);
         gl.disable(gl.SCISSOR_TEST);
         gl.activeTexture(gl.TEXTURE0);
-        for (const child of attachments)
-          child.preview.draw({
-            elapsed,
-            viewport,
-            clear: false,
-            preserveDepth: true,
-            lighting,
-            camera,
-            diagonalFraming,
-            pointLights: lastPointLights,
-            placement: model.placeAttachment(child.id, elapsed, placement, facing),
-            viewState,
-          });
+        if (!portrait)
+          for (const child of attachments)
+            child.preview.draw({
+              elapsed,
+              viewport,
+              clear: false,
+              preserveDepth: true,
+              lighting,
+              camera,
+              diagonalFraming,
+              pointLights: lastPointLights,
+              placement: model.placeAttachment(child.id, elapsed, placement, facing),
+              viewState,
+            });
         return {
           triangles,
           eye_glow_triangles: eyeGlowTriangles,

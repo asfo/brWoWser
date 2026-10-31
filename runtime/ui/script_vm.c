@@ -5,7 +5,22 @@
 #include "lauxlib.h"
 #include <stdlib.h>
 #include <string.h>
-static char execution_key;
+static char execution_key, deferred_binding_key;
+void bw_ui_defer_function_bindings(lua_State *L) {
+  lua_pushlightuserdata(L, &deferred_binding_key);
+  lua_pushboolean(L, 1);
+  lua_rawset(L, LUA_REGISTRYINDEX);
+}
+static int deferred_function(lua_State *L) {
+  int arguments = lua_gettop(L);
+  const char *name = lua_tostring(L, lua_upvalueindex(1));
+  lua_getglobal(L, name);
+  if (!lua_isfunction(L, -1))
+    return luaL_error(L, "Deferred FrameXML function is unavailable: %s", name);
+  lua_insert(L, 1);
+  lua_call(L, arguments, LUA_MULTRET);
+  return lua_gettop(L);
+}
 uint32_t bw_ui_execution_context(lua_State *L) {
   lua_pushlightuserdata(L, &execution_key);
   lua_rawget(L, LUA_REGISTRYINDEX);
@@ -95,6 +110,17 @@ uint32_t bw_ui_bind_script(lua_State *L, uint32_t type, const char *event, uint3
   }
   if (attribute && *attribute) {
     lua_getglobal(L, attribute);
+    if (lua_isnil(L, -1)) {
+      lua_pushlightuserdata(L, &deferred_binding_key);
+      lua_rawget(L, LUA_REGISTRYINDEX);
+      int deferred = lua_toboolean(L, -1);
+      lua_pop(L, 1);
+      if (deferred) {
+        lua_pop(L, 1);
+        lua_pushstring(L, attribute);
+        lua_pushcclosure(L, deferred_function, 1);
+      }
+    }
     int reference = luaL_ref(L, LUA_REGISTRYINDEX);
     if (reference == LUA_REFNIL) {
       if (compiled > 0)

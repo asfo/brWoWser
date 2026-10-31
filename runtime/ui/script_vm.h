@@ -23,6 +23,7 @@ uint32_t bw_ui_call_script(lua_State *L, const BwUiScriptSlot *slot, int owner_r
                            uint32_t arguments, char *error, uint32_t error_capacity);
 /* Explicit closed-resource execution context only. This does not implement
  * Blizzard value/table taint propagation. Missing context defaults untrusted. */
+void bw_ui_defer_function_bindings(lua_State *L);
 uint32_t bw_ui_execution_context(lua_State *L);
 uint32_t bw_ui_execution_swap(lua_State *L, uint32_t untrusted);
 void bw_ui_execution_register(lua_State *L);

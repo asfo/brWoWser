@@ -5,6 +5,7 @@
 #include "collision.h"
 #include "audio.h"
 #include "loading.h"
+#include "minimap.h"
 
 /* Bounded owner-asset decoding and ground movement. The host only uploads
  * these arrays and forwards input; no terrain or camera math lives in JS. */
@@ -548,6 +549,8 @@ uint32_t world_step(float dt) {
                                  : 0;
   /* Feet follow the travel direction. Network/body-facing remains independent. */
   float travel = side || forward ? atan2f(side, fabsf(forward)) : 0;
+  /* A sideways run twists the pelvis, not the entire body by ninety degrees. */
+  travel = fmaxf(-.785398163f, fminf(.785398163f, travel));
   float heading = player[3] + travel * (forward < 0 ? -1 : 1);
   float difference = atan2f(sinf(heading - player[6]), cosf(heading - player[6]));
   player[6] += difference * fminf(1, dt * 14);
@@ -1557,4 +1560,17 @@ uint32_t world_loading_wide(void) {
 }
 uint32_t world_loading_layout(float w, float h, float progress) {
   return (uint32_t)(uintptr_t)bw_loading_layout(w, h, progress);
+}
+
+uint32_t world_minimap_directory(void) {
+  return (uint32_t)(uintptr_t)bw_minimap_directory();
+}
+uint32_t world_minimap_index(uint32_t n) {
+  return n > CAP ? 1 : bw_minimap_index(input, n);
+}
+uint32_t world_minimap_sample(void) {
+  return (uint32_t)(uintptr_t)bw_minimap_sample(player[0], player[1], player[3]);
+}
+uint32_t world_minimap_paths(void) {
+  return (uint32_t)(uintptr_t)bw_minimap_paths();
 }

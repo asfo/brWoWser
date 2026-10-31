@@ -585,6 +585,36 @@ export async function loadCharacterModel({
         16,
       ).slice();
     },
+    samplePortrait(view) {
+      return pose?.sample(0, 0, view) || { positions, normals };
+    },
+    portraitView(aspect) {
+      const values = new Float32Array(16);
+      values.set(bounds.min, 10);
+      values.set(bounds.max, 13);
+      const v = new DataView(model.buffer, model.byteOffset, model.byteLength);
+      const keyCount = v.getUint32(52, true),
+        keyOffset = v.getUint32(56, true);
+      const bone = keyCount > 6 ? v.getUint16(keyOffset + 12, true) : 0;
+      const at = v.getUint32(48, true) + bone * 88 + 76;
+      if (bone >= v.getUint32(44, true) || at + 12 > model.length)
+        throw Error('Portrait head bone unavailable');
+      for (let i = 0; i < 3; i++) values[i] = v.getFloat32(at + i * 4, true);
+      new Float32Array(prepare.memory.buffer, prepare.character_view_input(), 16).set(values);
+      if (prepare.character_view(3, aspect)) throw Error('Portrait camera rejected');
+      const out = new Float32Array(
+        prepare.memory.buffer,
+        prepare.character_view_output(),
+        67,
+      ).slice();
+      return {
+        view: out.subarray(0, 16),
+        projection: out.subarray(16, 32),
+        transform: out.subarray(32, 48),
+        particleView: out.subarray(48, 64),
+        eye: out.subarray(64, 67),
+      };
+    },
     view(aspect, authoredCamera = camera, diagonalFraming = false) {
       const values = new Float32Array(16);
       if (authoredCamera) values.set(authoredCamera, 0);

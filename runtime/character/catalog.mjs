@@ -81,6 +81,7 @@ const expected = {
   facial: ['CharacterFacialHairStyles', 8],
   outfits: ['CharStartOutfit', 77],
   items: ['ItemDisplayInfo', 25],
+  equipmentTypes: ['Item', 8],
 };
 
 export async function createCharacterCatalog(readAsset) {
@@ -100,6 +101,11 @@ export async function createCharacterCatalog(readAsset) {
   const combinations = parseCharacterCombinations(
     await readAsset('DBFilesClient\\CharBaseInfo.dbc'),
   );
+  const sheaths = new Map();
+  for (const row of tables.equipmentTypes.rows) {
+    const t = tables.equipmentTypes;
+    sheaths.set(t.u(row, 5) + ':' + t.u(row, 6), t.u(row, 7));
+  }
   const itemRows = new Map(items.rows.map((row) => [items.u(row, 0), row]));
   const clothingPaths = new Map();
   async function clothingPath(name, folder, gender) {
@@ -328,10 +334,20 @@ export async function createCharacterCatalog(readAsset) {
           // Shields mount on the forearm (0); bows use the left palm (2).
           // Other main/off-hand items retain their respective palm anchors.
           const bow = /^bow/i.test(file);
-          const anchor = item.inventoryType === 14 ? 0 : bow ? 2 : attachmentId;
+          const sheath = sheaths.get(item.display + ':' + item.inventoryType) || 0;
+          const sheathAnchor = [null, 26, 27, 30, 31, 32, 33, 28][sheath];
+          const stored =
+            appearance.worldPreview && sheathAnchor !== null && sheathAnchor !== undefined;
+          const anchor = stored
+            ? sheathAnchor
+            : item.inventoryType === 14
+              ? 0
+              : bow
+                ? 2
+                : attachmentId;
           attachments.push({
             attachmentId: anchor,
-            gripHand: item.inventoryType === 14 || bow ? 2 : attachmentId,
+            gripHand: stored ? 0 : item.inventoryType === 14 || bow ? 2 : attachmentId,
             modelPath: path,
             skinPath: path.replace(/\.m2$/i, '00.skin'),
             texture: texturePath(prefix + texture),

@@ -23,6 +23,7 @@ export const worldUIEntries = [
   'ReadyCheck.xml',
   'MainMenuBar.xml',
   'PlayerFrame.xml',
+  'Minimap.xml',
 ];
 const templateEntries = new Set([
   'GameTooltip.xml',

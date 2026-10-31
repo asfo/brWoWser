@@ -43,7 +43,9 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 - [ ] Implement authoritative world objects and position reconciliation.
 - [ ] Compare race introductions, sky/cloud rendering, WMO decoration, particles, narration and skip-to-player handoff against the native client.
 - [x] Load the initial selected original FrameXML/Lua dependency closure in a separate C/WASM VM and draw player/main-menu artwork inside the game canvas.
-- [ ] Finish general FrameXML lifecycle activation and remaining source dependencies; add the portrait and real unit-state updates.
+- [x] Add initial cached 3D player portrait, selected server health/resource fields and source-texture outdoor minimap.
+- [ ] Manually compare portrait framing, resource bars and minimap; implement zoom/tracking/POIs, indoor maps and interaction.
+- [ ] Finish general FrameXML lifecycle activation and remaining source dependencies.
 - [ ] Decode authoritative player/object fields needed by Unit and action APIs; deliver initial world-entry and player-state events to the original Lua frames.
 - [ ] Bring up the minimal in-game HUD (player frame, action bars, chat, main menu), then enable controls against real server state.
 - [ ] In-game objects/NPCs, interaction, inventory, spells, and quests.

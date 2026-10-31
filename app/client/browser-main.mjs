@@ -257,6 +257,13 @@ const launch = (event) => {
         return;
       }
       worldClient?.sync(entry);
+      window.worldUnitStatus = {
+        revision: entry.unit?.revision,
+        decodeIssue: entry.unitDecodeIssue || 0,
+      };
+      worldHUD
+        ?.updateUnit(entry.unit)
+        .catch((error) => console.warn('World UI unit: ' + error.message));
       if (!entry.location) return;
       const key = JSON.stringify([
         entry.character.guid,
@@ -359,6 +366,9 @@ const launch = (event) => {
             if (generation !== worldGeneration) hud.dispose();
             else {
               worldHUD = hud;
+              hud
+                .updateUnit(window.uiInputState?.world_entry?.unit)
+                .catch((error) => console.warn('World UI unit: ' + error.message));
               if (hudWidth !== viewport.logicalWidth || hudHeight !== viewport.logicalHeight)
                 hud
                   .resize(viewport.logicalWidth, viewport.logicalHeight)
@@ -894,6 +904,15 @@ const launch = (event) => {
         };
         let inputQueue = Promise.resolve();
         const applyInput = (action) => {
+          // World controls have their own canvas listeners. Do not hit-test the
+          // hidden character selector for every world pointer/keyboard event.
+          if (
+            window.uiInputState?.world_entry &&
+            !window.uiInputState.world_entry.modal &&
+            action.kind >= 1 &&
+            action.kind <= 7
+          )
+            return Promise.resolve();
           if (worldLoading && ((action.kind >= 1 && action.kind <= 7) || action.kind === 13))
             return Promise.resolve();
           const task = inputQueue.then(() => performInput(action));
@@ -994,7 +1013,7 @@ const launch = (event) => {
             requestAnimationFrame(animate);
             return;
           }
-          if (now - lastFrame < 1000 / 30) {
+          if (now - lastFrame < 1000 / (window.uiInputState?.world_entry ? 60 : 30)) {
             requestAnimationFrame(animate);
             return;
           }
@@ -1002,6 +1021,9 @@ const launch = (event) => {
           try {
             if (
               !window.uiAnimationPaused &&
+              (!window.uiInputState?.world_entry ||
+                window.uiInputState.world_entry.modal ||
+                window.uiInputState.fade_pending) &&
               (window.uiInputState?.auth_busy ||
                 window.uiInputState?.character_busy ||
                 isCharacterScreen(window.uiInputState) ||
@@ -1075,8 +1097,15 @@ const launch = (event) => {
                 measurePixels: false,
               });
             }
-            if (window.worldStatus?.phase === 'world' && window.uiInputState?.world_entry)
+            if (window.worldStatus?.phase === 'world' && window.uiInputState?.world_entry) {
               worldHUD?.draw();
+              if (worldHUD?.rects)
+                worldClient?.drawOverlays(
+                  worldHUD.rects,
+                  viewport.logicalWidth,
+                  viewport.logicalHeight,
+                );
+            }
             if (!worldLoading) {
               uiRenderer.draw();
               softwareCursor?.draw();

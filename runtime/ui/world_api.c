@@ -8,6 +8,7 @@ static struct {
   char text[7][256];
   double seconds;
   int supplied;
+  uint32_t values[160], known[160];
   char classes[12][3][128];
 } player;
 uint32_t bw_world_ui_player(uint32_t low, uint32_t high, uint32_t race, uint32_t class_id,
@@ -46,6 +47,15 @@ uint32_t bw_world_ui_clock(double seconds) {
   player.seconds = seconds;
   return 0;
 }
+uint32_t bw_world_ui_state(const uint8_t *b, uint32_t n) {
+  if (n != 1280)
+    return 1;
+  memcpy(player.values, b, 640);
+  memcpy(player.known, b + 640, 640);
+  if (player.known[54] && player.values[54])
+    player.level = player.values[54];
+  return 0;
+}
 static int call(lua_State *L) {
   int op = lua_tointeger(L, lua_upvalueindex(1));
   if (op == 0) {
@@ -75,6 +85,29 @@ static int call(lua_State *L) {
   }
   if (!exists) {
     lua_pushnil(L);
+    return 1;
+  }
+  if (op >= 12) {
+    uint32_t power = player.known[23] ? (player.values[23] >> 24) : 0;
+    uint32_t slot = power;
+    if (op == 16) {
+      const char *tokens[] = {"MANA",      "RAGE",  "FOCUS",      "ENERGY",
+                              "HAPPINESS", "RUNES", "RUNIC_POWER"};
+      lua_pushnumber(L, power);
+      lua_pushstring(L, power < 7 ? tokens[power] : "UNKNOWN");
+      return 2;
+    }
+    if (op == 17 || op == 18)
+      slot = 0;
+    uint32_t field = op == 12 ? 24 : op == 13 ? 32 : (op == 14 || op == 17) ? 25 + slot : 33 + slot;
+    if (slot > 6 || field >= 160 || !player.known[field])
+      lua_pushnil(L);
+    else {
+      double value = player.values[field];
+      if ((op >= 14 && op <= 15) && (power == 1 || power == 6))
+        value /= 10;
+      lua_pushnumber(L, value);
+    }
     return 1;
   }
   if (op == 5) {
@@ -212,9 +245,11 @@ uint32_t bw_world_ui_register(lua_State *L) {
     lua_setfield(L, -2, bit_names[i]);
   }
   lua_setglobal(L, "bit");
-  const char *names[] = {"GetTime",    "GetLocale", "GetActionBarPage", "GetBuildInfo",
-                         "UnitExists", "UnitName",  "UnitLevel",        "UnitRace",
-                         "UnitClass",  "UnitSex",   "UnitFactionGroup", "UnitGUID"};
+  const char *names[] = {"GetTime",       "GetLocale",     "GetActionBarPage", "GetBuildInfo",
+                         "UnitExists",    "UnitName",      "UnitLevel",        "UnitRace",
+                         "UnitClass",     "UnitSex",       "UnitFactionGroup", "UnitGUID",
+                         "UnitHealth",    "UnitHealthMax", "UnitPower",        "UnitPowerMax",
+                         "UnitPowerType", "UnitMana",      "UnitManaMax"};
   for (uint32_t i = 0; i < sizeof(names) / sizeof(*names); i++) {
     lua_pushinteger(L, i);
     lua_pushcclosure(L, call, 1);

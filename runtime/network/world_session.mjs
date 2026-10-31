@@ -207,6 +207,7 @@ export function connectWorldSession({
           const job = {};
           job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
           entryRequest = job;
+          e.bw_world_unit_begin(...roster.selected.guid);
           worldEntry = {
             phase: 'entering',
             character: roster.selected,
@@ -478,7 +479,30 @@ export function connectWorldSession({
         return;
       }
       if (opcode === WORLD.update || opcode === WORLD.compressedUpdate) {
-        if (worldEntry) worldEntry = { ...worldEntry, updates: worldEntry.updates + 1 };
+        if (worldEntry) {
+          new Uint8Array(e.memory.buffer, e.bw_update_input(), body.length).set(body);
+          const result = e.bw_world_unit_update(
+            body.length,
+            Number(opcode === WORLD.compressedUpdate),
+          );
+          let unit = worldEntry.unit;
+          const revision = e.bw_world_unit_revision();
+          if (!result && revision !== unit?.revision) {
+            const values = Array.from(
+              new Uint32Array(e.memory.buffer, e.bw_world_unit_values(), 160),
+            );
+            const known = Array.from(
+              new Uint32Array(e.memory.buffer, e.bw_world_unit_known(), 160),
+            );
+            unit = { revision, values, known };
+          }
+          worldEntry = {
+            ...worldEntry,
+            unit,
+            updates: worldEntry.updates + 1,
+            unitDecodeIssue: result || 0,
+          };
+        }
         return;
       }
       if (opcode === OPCODE.challenge) {
