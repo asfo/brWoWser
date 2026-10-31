@@ -433,29 +433,35 @@ export async function loadCharacterModel({
     cachedPose,
     warnedUnsupportedPose = false;
   let runPose,
-    runDuration = 0,
-    moving = false;
+    moving = 0,
+    motionStart = 0;
+  const movementClips = new Map();
   if (appearance?.worldPreview && pose) {
-    try {
-      const run = await idleModel(
-        model,
-        metadata.modelPath,
-        readAsset,
-        (metadata.attachments || []).map((item) => item.gripHand ?? item.attachmentId),
-        5,
-      );
-      runPose = await createBonePoseRuntime(modules.bones, run.model, prepared);
-      runDuration = run.duration;
-    } catch (error) {
-      onIssue('Run animation unavailable: ' + error.message);
+    for (const animation of [5, 11, 12, 13]) {
+      try {
+        const clip = await idleModel(
+          model,
+          metadata.modelPath,
+          readAsset,
+          (metadata.attachments || []).map((item) => item.gripHand ?? item.attachmentId),
+          animation,
+        );
+        movementClips.set(animation, clip);
+        if (!runPose) runPose = await createBonePoseRuntime(modules.bones, clip.model, prepared);
+      } catch (error) {
+        onIssue('Movement animation ' + animation + ': ' + error.message);
+      }
     }
   }
   function samplePose(elapsedMs, view) {
     const ms = Math.floor(elapsedMs);
     if (ms !== cachedTime || (view && (!cachedView || view.some((v, i) => v !== cachedView[i])))) {
       const runtime = moving && runPose ? runPose : pose;
-      const clock = moving && runPose ? runDuration : duration;
-      cachedPose = runtime?.sample(clock ? ms % clock : 0, ms, view);
+      const clip =
+        movementClips.get(moving) || movementClips.get(5) || movementClips.values().next().value;
+      const clock = moving && runPose ? clip.duration : duration;
+      const sequenceMs = moving ? Math.max(0, ms - motionStart) : ms;
+      cachedPose = runtime?.sample(clock ? sequenceMs % clock : 0, ms, view);
       if (view && cachedPose && !warnedUnsupportedPose && cachedPose.vertexValid.some((v) => !v)) {
         warnedUnsupportedPose = true;
         onIssue(
@@ -487,9 +493,15 @@ export async function loadCharacterModel({
         16,
       ).slice();
     },
-    motion(value) {
-      if (moving !== !!value) {
-        moving = !!value;
+    motion(value, elapsedMs = 0) {
+      const animation = typeof value === 'boolean' ? (value ? 5 : 0) : value;
+      if (![0, 5, 11, 12, 13].includes(animation)) throw Error('Unsupported locomotion animation');
+      if (moving !== animation) {
+        moving = animation;
+        motionStart = Math.floor(elapsedMs);
+        const clip =
+          movementClips.get(moving) || movementClips.get(5) || movementClips.values().next().value;
+        if (moving && runPose && clip) runPose.setModel(clip.model);
         cachedTime = -1;
       }
     },

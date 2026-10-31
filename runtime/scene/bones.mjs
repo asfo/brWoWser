@@ -5,10 +5,17 @@ export async function createBonePoseRuntime(wasm, model, prepared, { normalizer 
   const { instance } = await instantiate(wasm),
     e = instance.exports,
     count = prepared.byteLength / 48;
+  let modelLength = model.byteLength;
   if (e.set_normalizer(normalizer)) throw Error('invalid normalizer mode');
   new Uint8Array(e.memory.buffer, e.model_ptr(), model.byteLength).set(model);
   new Uint8Array(e.memory.buffer, e.prepared_ptr(), prepared.byteLength).set(prepared);
   return {
+    setModel(bytes) {
+      if (!(bytes instanceof Uint8Array) || bytes.length < 0x138 || bytes.length > 8388608)
+        throw Error('pose model capacity');
+      new Uint8Array(e.memory.buffer, e.model_ptr(), bytes.length).set(bytes);
+      modelLength = bytes.length;
+    },
     sample(sequenceMs, globalMs, view) {
       for (const ms of [sequenceMs, globalMs])
         if (!Number.isInteger(ms) || ms < 0 || ms > 0xffffffff) throw Error('invalid pose time');
@@ -18,7 +25,7 @@ export async function createBonePoseRuntime(wasm, model, prepared, { normalizer 
         new Float32Array(e.memory.buffer, e.view_ptr(), 16).set(view);
       }
       if (e.set_camera?.(view ? 1 : 0)) throw Error('pose camera rejected');
-      const p = e.pose(model.byteLength, sequenceMs, globalMs);
+      const p = e.pose(modelLength, sequenceMs, globalMs);
       if (p) throw Error('pose rejected ' + p);
       const s = e.skin(count);
       if (s) throw Error('skin rejected ' + s);

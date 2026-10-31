@@ -4,9 +4,13 @@ import { openArchive } from '../../runtime/io/member_reader.mjs';
 import { createRangeCache } from '../../runtime/io/range_cache.mjs';
 let archives, ordered, lookupWasm, decoderWasm, blp, files;
 let world;
+const collisionMeshes = new Map();
+let collisionSerial = 0;
 async function worldOperation(data) {
   if (data.operation === 'init') {
     world = (await WebAssembly.instantiate(data.wasm, {})).instance.exports;
+    collisionMeshes.clear();
+    collisionSerial = 0;
     return {};
   }
   if (!world) throw Error('World decoder is unavailable');
@@ -17,6 +21,77 @@ async function worldOperation(data) {
     if (asset.length > world.world_capacity()) throw Error('World asset exceeds decoder capacity');
     new Uint8Array(world.memory.buffer, world.world_input(), asset.length).set(asset);
     return asset.length;
+  }
+  const audioState = () => {
+    const info = floats(world.world_audio_info(), 18);
+    return Array.from({ length: 3 }, (_, channel) => {
+      const path = new Uint8Array(
+        world.memory.buffer,
+        world.world_audio_paths() + channel * 512,
+        512,
+      );
+      return {
+        id: info[channel * 6],
+        volume: info[channel * 6 + 1],
+        revision: info[channel * 6 + 2],
+        delay: info[channel * 6 + 5],
+        path: new TextDecoder().decode(path.subarray(0, path.indexOf(0))),
+      };
+    });
+  };
+  if (data.operation === 'audio-init') {
+    for (const [kind, name] of [
+      'AreaTable',
+      'ZoneMusic',
+      'SoundAmbience',
+      'ZoneIntroMusicTable',
+      'SoundEntries',
+    ].entries()) {
+      const error = world.world_audio_load(kind, await load('DBFilesClient/' + name + '.dbc'));
+      if (error) throw Error(`World audio table rejected (${error}): ${name}`);
+    }
+    return {};
+  }
+  if (data.operation === 'audio-next') {
+    if (world.world_audio_next(data.channel)) throw Error('Invalid world audio channel');
+    return audioState();
+  }
+  if (data.operation === 'collision') {
+    if (
+      !(data.placement instanceof Float32Array) ||
+      data.placement.length !== 16 ||
+      !data.placement.every(Number.isFinite) ||
+      !Number.isSafeInteger(data.instanceId) ||
+      data.instanceId < 1
+    )
+      throw Error('Invalid collision instance');
+    const attach = async (path, kind) => {
+      const name = path.toLowerCase().replaceAll('\\', '/');
+      let key = collisionMeshes.get(name);
+      if (key === undefined) {
+        key = ++collisionSerial;
+        const error = world.world_collision_mesh(key, kind, await load(path));
+        if (error) throw Error(`Collision mesh rejected (${error}): ${path}`);
+        collisionMeshes.set(name, key);
+      }
+      floats(world.world_parent(), 16).set(data.placement);
+      const error = world.world_collision_instance(data.instanceId, key);
+      if (error) throw Error(`Collision instance rejected (${error}): ${path}`);
+    };
+    if (data.modelKind === 'm2') {
+      await attach(data.path.replace(/\.(?:mdl|mdx)$/i, '.m2'), 1);
+      return { groups: [] };
+    }
+    const length = await load(data.path);
+    floats(world.world_parent(), 16).set(data.placement);
+    const error = world.world_collision_group_select(length);
+    if (error) throw Error(`Collision group selection rejected (${error}): ${data.path}`);
+    const groups = Array.from(
+      words(world.world_collision_group_ptr(), words(world.world_meta(), 1)[0]),
+    );
+    for (const group of groups)
+      await attach(data.path.replace(/\.wmo$/i, '_' + String(group).padStart(3, '0') + '.wmo'), 0);
+    return { groups };
   }
   if (data.operation === 'terrain') {
     const n = await load(data.path);
@@ -190,15 +265,22 @@ async function worldOperation(data) {
     world.world_cull();
     world.world_cull_objects();
     world.world_cull_decor();
+    world.world_collision_cull();
+    world.world_audio_sample(data.time * 0.5);
     const skyStatus = world.world_environment(data.map, data.time, data.globalMs);
     return {
       player: floats(world.world_player(), 8).slice(),
+      area: world.world_area(),
+      audio: audioState(),
       camera: floats(world.world_camera(), 10).slice(),
       view: floats(world.world_view_ptr(), 83).slice(),
       placement: floats(world.world_placement(), 16).slice(),
       tiles: words(world.world_meta(), 4).slice(),
       visibility: words(world.world_visibility(), 160).slice(),
       objectVisibility: words(world.world_object_visibility(), 2080).slice(),
+      collisionNear: words(world.world_collision_near(), 2080).slice(),
+      collisionDecor: words(world.world_collision_decor(), 1024).slice(),
+      collisionState: new Int32Array(world.memory.buffer, world.world_collision_state(), 5).slice(),
       decorVisibility: words(world.world_decor_visibility(), 1024).slice(),
       sky: skyStatus ? null : floats(world.world_sky_values(), 58).slice(),
       skybox: skyStatus ? 0 : world.world_sky_id(),

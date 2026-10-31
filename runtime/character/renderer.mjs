@@ -255,7 +255,7 @@ export async function createCharacterPreview({
             row ? row.slice(10, 13).map((value) => value * row[9]) : [0.45, 0.45, 0.45],
           );
         }
-        model.motion(moving);
+        model.motion(moving, elapsed);
         if (model.animated) {
           gl.bindBuffer(gl.ARRAY_BUFFER, positions);
           gl.bufferSubData(

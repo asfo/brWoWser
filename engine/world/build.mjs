@@ -2,6 +2,20 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { runClang } from '../../tools/compiler.mjs';
 const source = await readFile(new URL('../../runtime/world/world.c', import.meta.url));
 const exports = [
+  'world_audio_load',
+  'world_audio_info',
+  'world_audio_paths',
+  'world_audio_sample',
+  'world_audio_next',
+  'world_collision_decor',
+  'world_collision_near',
+  'world_collision_state',
+  'world_collision_cull',
+  'world_collision_group_ptr',
+  'world_collision_group_select',
+  'world_collision_mesh',
+  'world_collision_instance',
+  'world_area',
   'world_decor_sources',
   'world_group_decor',
   'world_environment_load',
@@ -71,9 +85,17 @@ const output = await runClang(
     '-o',
     'world.wasm',
     'world.c',
+    'collision.c',
+    'audio.c',
     '-lm',
   ],
-  { 'world.c': source },
+  {
+    'world.c': source,
+    'collision.c': await readFile(new URL('../../runtime/world/collision.c', import.meta.url)),
+    'collision.h': await readFile(new URL('../../runtime/world/collision.h', import.meta.url)),
+    'audio.c': await readFile(new URL('../../runtime/world/audio.c', import.meta.url)),
+    'audio.h': await readFile(new URL('../../runtime/world/audio.h', import.meta.url)),
+  },
 );
 await mkdir(new URL('build/', import.meta.url), { recursive: true });
 await writeFile(new URL('build/world.wasm', import.meta.url), output['world.wasm']);

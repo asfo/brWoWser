@@ -279,6 +279,7 @@ const launch = (event) => {
           catalog,
           modules,
           prepareWasm: resourceArgs.prepareWasm,
+          audioSettings: config.fixture.profile.defaults,
           entry,
           isCurrent: () => generation === worldGeneration,
           send: (action) => window.uiInput({ kind: 14, ...action }),

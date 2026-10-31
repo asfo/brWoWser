@@ -28,7 +28,7 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - A C/WASM worker decodes ADT terrain, texture alpha maps, static WMO groups, static M2 decoration and instance transforms.
 - C/WASM evaluates the source introduction camera spline, terrain heights, ground movement, player placement and view matrices. JavaScript owns browser I/O, input forwarding, media playback and WebGL submission.
 - Server-triggered introductions resolve their source camera and narration. Escape opens a canvas C/Lua confirmation; completion restores the follow camera.
-- Initial outdoor controls support forward/backward movement, turning, strafing, right-button camera orbit and wheel zoom, with server movement packets and stand/run poses.
+- Initial outdoor controls support forward/backward movement, turning, strafing, right-button camera orbit and wheel zoom, with server movement packets and source run/left/right/backward poses. Diagonal visual facing is computed in WASM.
 - Archive sector reads use a bounded block cache; decoded textures transfer to the browser without another buffer copy. Frame samples take priority over background reads, and a bounded queue loads visible scenery instead of every asset in each tile.
 - ADT object records persist across camera movement and cinematic skipping; C/WASM recomputes their visibility for the current view. Terrain bounds are prepared once during decoding.
 - WMO decoration sets and exterior-group references admit the five Valley of Heroes statues and source-authored props. Torches and chimneys use original particle records with instance-local camera transforms.
@@ -43,6 +43,15 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - C/WASM owns frame composition, font rasterization, StatusBar geometry and the initial unit identity APIs. Name, level, race, class, sex and GUID come from the authenticated roster and client metadata.
 - The shell appears after the introduction ends or is skipped, inside the existing canvas. It remains hidden during the introduction. Loading failures are isolated from the world connection and exposed through `window.worldUIStatus`.
 - General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, unit state, portrait generation, action buttons, chat and menu interaction remain unfinished.
+
+## Static collision and initial world audio
+
+- Legacy ADT/WMO model references ending in `.mdl` or `.mdx` normalize to `.m2` before lookup. This includes the reported `TORCH.MDL` reference.
+- The WASM world module admits source M2 bounding triangles and WMO collision/render faces, transforms instance geometry, performs capsule/triangle checks, samples walkable model surfaces and integrates short movement steps with sliding. Nearby collision loading is independent of the render frustum; nearby WMO interior geometry can also be drawn.
+- A bounded owner-resource preparation around Northshire admitted 57 collision meshes / 165 instances containing 9,643 triangles from the selected nearby records, including nine WMO groups. This is asset admission evidence; movement behavior remains manually validated.
+- WASM resolves source area inheritance and SoundEntries file selection for music/ambience/intro channels. The browser supplies media decoding/output without blocking world frame delivery. Northshire's source data resolved music 2523 and ambience 4183 during local preparation.
+- World locomotion reuses one movement pose VM across the admitted source clips rather than allocating another full VM for every direction.
+- The model-light argument regression introduced with the FrameXML type extension is corrected: the native bridge reads exactly the 13 supplied light values using the array's length.
 
 ## Current review
 

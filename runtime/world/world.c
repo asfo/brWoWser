@@ -2,6 +2,8 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include "collision.h"
+#include "audio.h"
 
 /* Bounded owner-asset decoding and ground movement. The host only uploads
  * these arrays and forwards input; no terrain or camera math lives in JS. */
@@ -22,6 +24,7 @@ static uint8_t camera_bytes[2 * 1024 * 1024];
 typedef struct {
   float x, y, heights[CELLS * VERTS], chunk_bounds[CELLS][4];
   uint16_t holes[CELLS];
+  uint32_t areas[CELLS];
   int used;
   uint32_t object_count;
   float objects[OBJECTS][4];
@@ -172,6 +175,7 @@ uint32_t world_terrain(uint32_t length, uint32_t big_alpha) {
     tile->x = x + iy * CELL_SIZE;
     tile->y = y + ix * CELL_SIZE;
     uint32_t cell = iy * 16 + ix, vbase = count * VERTS;
+    tile->areas[cell] = u32(input, base + 52);
     tile->holes[cell] = (uint16_t)u32(input, base + 60);
     uint32_t v = 0;
     for (uint32_t row = 0; row < 17; row++)
@@ -285,8 +289,21 @@ uint32_t world_spawn(void) {
     if (!isfinite(controls[i]))
       return 1;
   memcpy(player, controls, 4 * sizeof(float));
-  player[4] = 0;
+  player[4] = player[5] = 0;
+  player[6] = player[3];
   return 0;
+}
+static int move_position(float x, float y) {
+  float terrain = terrain_height(x, y),
+        surface = bw_collision_floor(x, y, player[2] - 1.8f, player[2] + .55f);
+  float z = isfinite(surface) && (!isfinite(terrain) || surface > terrain) ? surface : terrain;
+  if (!isfinite(z) || z - player[2] > .55f || player[2] - z > 1.8f)
+    return 0;
+  float feet[3] = {x, y, z};
+  if (bw_collision_blocked(feet, .35f, 1.8f))
+    return 0;
+  memcpy(player, feet, sizeof(feet));
+  return 1;
 }
 uint32_t world_step(float dt) {
   if (!isfinite(dt) || dt < 0 || dt > .1f)
@@ -296,22 +313,27 @@ uint32_t world_step(float dt) {
       return 1;
   float forward = controls[0], side = controls[1], turn = controls[2];
   player[3] = fmodf(player[3] + turn * 2.25f * dt + 6.283185307f, 6.283185307f);
-  float x = player[0], y = player[1], c = cosf(player[3]), s = sinf(player[3]);
-  float norm = sqrtf(forward * forward + side * side);
+  float c = cosf(player[3]), s = sinf(player[3]), norm = sqrtf(forward * forward + side * side);
   if (norm > 1) {
     forward /= norm;
     side /= norm;
   }
-  float speed = forward < 0 ? 4.5f : 7;
-  x += (forward * c - side * s) * speed * dt;
-  y += (forward * s + side * c) * speed * dt;
-  float z = terrain_height(x, y);
-  if (isfinite(z) && fabsf(z - player[2]) < 2) {
-    player[0] = x;
-    player[1] = y;
-    player[2] = z;
+  float speed = forward < 0 ? 4.5f : 7, dx = (forward * c - side * s) * speed * dt,
+        dy = (forward * s + side * c) * speed * dt;
+  uint32_t steps = (uint32_t)ceilf(sqrtf(dx * dx + dy * dy) / .15f);
+  if (!steps)
+    steps = 1;
+  dx /= steps;
+  dy /= steps;
+  float oldx = player[0], oldy = player[1];
+  for (uint32_t i = 0; i < steps; i++) {
+    if (!move_position(player[0] + dx, player[1] + dy)) {
+      if (fabsf(dx) > 1e-7f)
+        move_position(player[0] + dx, player[1]);
+      if (fabsf(dy) > 1e-7f)
+        move_position(player[0], player[1] + dy);
+    }
   }
-  /* Unloaded ground, holes and steep steps stop movement instead of teleporting. */
   player[4] = (forward > 0   ? 1
                : forward < 0 ? 2
                              : 0) |
@@ -321,6 +343,10 @@ uint32_t world_step(float dt) {
               (turn > 0   ? 16
                : turn < 0 ? 32
                           : 0);
+  int moved = fabsf(player[0] - oldx) + fabsf(player[1] - oldy) > 1e-5f;
+  player[5] = !moved ? 0 : forward < 0 ? 13 : forward > 0 ? 5 : side > 0 ? 11 : 12;
+  player[6] =
+      player[3] + (forward && side ? atan2f(side, fabsf(forward)) * (forward < 0 ? -1 : 1) : 0);
   return 0;
 }
 uint32_t world_follow(float yaw, float distance, float pitch) {
@@ -590,6 +616,17 @@ static int path_copy(char *out, uint32_t at, uint32_t end) {
   out[i] = 0;
   return 0;
 }
+static void model_path(char *path) {
+  size_t n = strlen(path);
+  if (n < 4 || path[n - 4] != '.')
+    return;
+  char a = path[n - 3] | 32, b = path[n - 2] | 32, c = path[n - 1] | 32;
+  if (a == 'm' && b == 'd' && (c == 'l' || c == 'x')) {
+    path[n - 3] = 'm';
+    path[n - 2] = '2';
+    path[n - 1] = 0;
+  }
+}
 static uint32_t read_objects(uint32_t n, uint32_t kind) {
   if (n > CAP)
     return 1;
@@ -614,6 +651,8 @@ static uint32_t read_objects(uint32_t n, uint32_t kind) {
     if (off >= u32(input, names + 4) ||
         path_copy(object_names[index], names + 8 + off, names + 8 + u32(input, names + 4)))
       return 5;
+    if (kind)
+      model_path(object_names[index]);
     object_ids[index] = u32(input, at + 4);
     object_kinds[index] = kind;
     object_sets[index] = kind ? 0 : input[at + 58] | (uint32_t)input[at + 59] << 8;
@@ -992,6 +1031,7 @@ uint32_t world_wmo_decor(uint32_t n, uint32_t selected) {
       if (off >= u32(input, names + 4) ||
           path_copy(decor_names[index], names + 8 + off, names + 8 + u32(input, names + 4)))
         return 5;
+      model_path(decor_names[index]);
       float x = f32(input, at + 16), y = f32(input, at + 20), z = f32(input, at + 24),
             w = f32(input, at + 28), scale = f32(input, at + 32);
       float norm = sqrtf(x * x + y * y + z * z + w * w);
@@ -1160,4 +1200,115 @@ uint32_t world_environment(uint32_t map, float time, float elapsed) {
   sky_values[56] = sinf(angle);
   sky_values[57] = fmodf(elapsed * .000005f, 1.f);
   return 0;
+}
+
+/* Collision requests use player distance, independently of the render frustum. */
+static uint32_t collision_near[TILE_CACHE * (OBJECT_WORDS + 2)], collision_groups[512],
+    collision_decor[DECOR / 32];
+static int32_t collision_state[5];
+uint32_t world_collision_near(void) {
+  return (uint32_t)(uintptr_t)collision_near;
+}
+uint32_t world_collision_decor(void) {
+  return (uint32_t)(uintptr_t)collision_decor;
+}
+uint32_t world_collision_state(void) {
+  return (uint32_t)(uintptr_t)collision_state;
+}
+void world_collision_cull(void) {
+  memset(collision_near, 0, sizeof(collision_near));
+  memset(collision_decor, 0, sizeof(collision_decor));
+  for (uint32_t i = 0; i < decor_count; i++) {
+    const float *b = decor_bounds[i];
+    float dx = b[0] - player[0], dy = b[1] - player[1], dz = b[2] - player[2], r = b[3] + 50;
+    if (dx * dx + dy * dy + dz * dz <= r * r)
+      collision_decor[i / 32] |= 1u << (i & 31);
+  }
+  collision_state[0] = (int32_t)floorf(player[0] / 12);
+  collision_state[1] = (int32_t)floorf(player[1] / 12);
+  collision_state[2] = (int32_t)floorf(player[2] / 12);
+  collision_state[3] = (int32_t)bw_collision_triangles();
+  collision_state[4] = (int32_t)bw_collision_instances();
+  for (uint32_t t = 0; t < TILE_CACHE; t++) {
+    GroundTile *tile = &ground[t];
+    uint32_t *out = collision_near + t * (OBJECT_WORDS + 2);
+    out[0] = out[1] = UINT32_MAX;
+    if (!tile->used)
+      continue;
+    out[0] = (uint32_t)(int32_t)roundf(32 - tile->y / TILE_SIZE);
+    out[1] = (uint32_t)(int32_t)roundf(32 - tile->x / TILE_SIZE);
+    for (uint32_t i = 0; i < tile->object_count; i++) {
+      const float *b = tile->objects[i];
+      float dx = b[0] - player[0], dy = b[1] - player[1], dz = b[2] - player[2], r = b[3] + 70;
+      if (dx * dx + dy * dy + dz * dz <= r * r)
+        out[2 + i / 32] |= 1u << (i & 31);
+    }
+  }
+}
+uint32_t world_collision_group_ptr(void) {
+  return (uint32_t)(uintptr_t)collision_groups;
+}
+uint32_t world_collision_group_select(uint32_t n) {
+  memset(meta, 0, sizeof(meta));
+  if (n > CAP)
+    return 1;
+  uint32_t groups = find(input, n, 0, TAG('M', 'O', 'G', 'I'));
+  if (!groups || u32(input, groups + 4) % 32 || u32(input, groups + 4) / 32 > 512)
+    return 1;
+  for (uint32_t i = 0; i < u32(input, groups + 4) / 32; i++) {
+    uint32_t at = groups + 8 + i * 32;
+    float bounds[6] = {INFINITY, INFINITY, INFINITY, -INFINITY, -INFINITY, -INFINITY};
+    for (uint32_t corner = 0; corner < 8; corner++) {
+      float p[3], w[3];
+      for (uint32_t k = 0; k < 3; k++)
+        p[k] = f32(input, at + 4 + k * 4 + ((corner >> k & 1) ? 12 : 0));
+      for (uint32_t k = 0; k < 3; k++) {
+        w[k] = parent_input[12 + k] + parent_input[k] * p[0] + parent_input[4 + k] * p[1] +
+               parent_input[8 + k] * p[2];
+        if (!isfinite(w[k]))
+          return 2;
+        bounds[k] = fminf(bounds[k], w[k]);
+        bounds[k + 3] = fmaxf(bounds[k + 3], w[k]);
+      }
+    }
+    float distance = 0;
+    for (uint32_t k = 0; k < 3; k++) {
+      float d = fmaxf(bounds[k] - player[k], fmaxf(0, player[k] - bounds[k + 3]));
+      distance += d * d;
+    }
+    if (distance < 60 * 60)
+      collision_groups[meta[0]++] = i;
+  }
+  return 0;
+}
+uint32_t world_collision_mesh(uint32_t key, uint32_t kind, uint32_t n) {
+  return n > CAP ? 1 : bw_collision_mesh(key, kind, input, n);
+}
+uint32_t world_collision_instance(uint32_t id, uint32_t key) {
+  return bw_collision_instance(id, key, parent_input);
+}
+uint32_t world_area(void) {
+  for (uint32_t t = 0; t < TILE_CACHE; t++) {
+    GroundTile *tile = &ground[t];
+    float row = (tile->x - player[0]) / CELL_SIZE, col = (tile->y - player[1]) / CELL_SIZE;
+    if (tile->used && row >= 0 && row < 16 && col >= 0 && col < 16)
+      return tile->areas[(uint32_t)row * 16 + (uint32_t)col];
+  }
+  return 0;
+}
+
+uint32_t world_audio_load(uint32_t kind, uint32_t n) {
+  return n > CAP ? 1 : bw_world_audio_load(kind, input, n);
+}
+uint32_t world_audio_info(void) {
+  return (uint32_t)(uintptr_t)bw_world_audio_info();
+}
+uint32_t world_audio_paths(void) {
+  return (uint32_t)(uintptr_t)bw_world_audio_paths();
+}
+void world_audio_sample(float minutes) {
+  bw_world_audio_sample(world_area(), minutes);
+}
+uint32_t world_audio_next(uint32_t channel) {
+  return bw_world_audio_next(channel);
 }

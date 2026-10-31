@@ -48,14 +48,14 @@ These are implementation milestones, not a claim of complete native equivalence.
 Use a newly created Human character on your local server and click **Enter World**. The server decides whether its first-login introduction should run. Terrain, outdoor WMO groups, their decoration sets, particle-driven props and the player model load from your client files. Sky color bands are read from the client Light tables; the server supplies game time.
 
 - **Escape** during the introduction opens a confirmation to skip it.
-- **W/S** move forward/backward; **A/D** turn; **Q/E** strafe.
+- **W/S** move forward/backward; **A/D** turn; **Q/E** strafe. Forward/backward + Q/E uses diagonal visual facing and source movement clips.
 - Hold the **right mouse button** to orbit the camera; use the **wheel** to zoom.
 
 Character deletion uses the original confirmation dialog: type the displayed confirmation word and confirm. The roster changes only after server confirmation.
 
 After the introduction ends or is skipped, the initial FrameXML shell can show the original player/main-menu artwork and the character name/level. It does not yet provide a portrait, health/resources, action buttons, chat or functional in-game menus.
 
-Stay outdoors near the starting area. Building collision, jumping/swimming, NPC reconstruction, a functional in-game HUD, combat and quests are still pending. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
+Initial static building/object collision and zone music/ambience are available for manual validation. Stay near the starting area: race-specific collision dimensions, jumping/swimming, NPC reconstruction, a functional in-game HUD, combat and quests remain unfinished. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
 
 ## Project layout
 

@@ -30,3 +30,9 @@ Introductions resolve their sequence, camera origin/model and narration from own
 `app/client/world_ui_worker.mjs` runs a separate VM through `runtime/ui/world_session.mjs`. Native player APIs are implemented in `world_api.c`, using roster identity and localized client metadata. The first profile loads original player/main-menu artwork with general component lifecycles deferred. Original Lua definitions and callbacks remain available for incremental activation as their native APIs become supported. Unknown gameplay values are not filled with invented health, XP, spells or inventory.
 
 The existing C frame runtime now admits `StatusBar` and the frame semantics of `WorldFrame`. Layout, fill geometry, glyph coverage and draw order stay in WASM. `world_hud.mjs` handles asset I/O, worker messages, texture upload and canvas composition; it does not recreate the HUD in HTML. A world-UI import error is reported separately and does not disconnect or discard a working world renderer.
+
+## Ground collision and world audio
+
+`runtime/world/collision.c` decodes authored M2 bounding geometry and WMO MOPY/MOVI/MOVT collision faces. Meshes are shared across instances; C owns transformed bounds, capsule/triangle distance queries, walkable-surface sampling and substepped movement with sliding. The asset worker loads nearby collision data independently of the camera frustum and can select nearby indoor WMO groups without loading an entire city. The initial cache is bounded but has no general traversal eviction yet.
+
+`runtime/world/audio.c` owns area inheritance, day/night channel selection, SoundEntries weights/paths/volume and ZoneMusic silence intervals. `runtime/audio/world_audio.mjs` supplies browser decoding/output and cancelable timers only. World frame production never waits for a song to decode or for a silence interval to finish. Footsteps, positional emitters and combat sound routing remain separate pending work.
