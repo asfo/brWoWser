@@ -6,4 +6,5 @@ void bw_world_audio_sample(uint32_t area, float minutes);
 uint32_t bw_world_audio_next(uint32_t channel);
 const float *bw_world_audio_info(void);
 const char *bw_world_audio_paths(void);
+const char *bw_world_area_name(uint32_t id);
 #endif

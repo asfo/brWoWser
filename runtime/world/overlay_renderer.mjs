@@ -7,7 +7,9 @@ export function createWorldOverlays(gl, source, onIssue) {
     vao,
     buffer,
     closed = false,
-    state;
+    state,
+    arrowTexture;
+  const arrowPath = 'Interface/Minimap/MinimapArrow.blp';
   const dispose = () => {
     closed = true;
     for (const t of textures.values()) if (t) gl.deleteTexture(t);
@@ -21,11 +23,11 @@ export function createWorldOverlays(gl, source, onIssue) {
     for (const [kind, text] of [
       [
         gl.VERTEX_SHADER,
-        '#version 300 es\nlayout(location=0)in vec2 position;layout(location=1)in vec2 texcoord;uniform bool full;out vec2 uv;void main(){vec2 p=position;if(full){p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2))*2.-1.;uv=(p+1.)*.5;}else uv=texcoord;gl_Position=vec4(p,0.,1.);}',
+        '#version 300 es\nlayout(location=0)in vec2 position;layout(location=1)in vec2 texcoord;uniform bool full;uniform vec4 sampleRect;out vec2 uv;void main(){vec2 p=position;if(full){p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2))*2.-1.;uv=mix(sampleRect.xy,sampleRect.zw,(p+1.)*.5);}else uv=texcoord;gl_Position=vec4(p,0.,1.);}',
       ],
       [
         gl.FRAGMENT_SHADER,
-        '#version 300 es\nprecision highp float;in vec2 uv;uniform sampler2D image;uniform vec3 circle;uniform bool marker;out vec4 color;void main(){if(distance(gl_FragCoord.xy,circle.xy)>circle.z)discard;color=marker?vec4(1.,.85,.1,1.):texture(image,uv);}',
+        '#version 300 es\nprecision highp float;in vec2 uv;uniform sampler2D image;uniform vec3 circle;uniform bool marker;out vec4 color;void main(){if(distance(gl_FragCoord.xy,circle.xy)>circle.z)discard;color=texture(image,uv);}',
       ],
     ]) {
       const s = gl.createShader(kind);
@@ -66,6 +68,7 @@ export function createWorldOverlays(gl, source, onIssue) {
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.activeTexture(gl.TEXTURE0);
       gl.uniform1i(loc('image'), 0);
+      gl.uniform4f(loc('sampleRect'), 0, 0, 1, 1);
       gl.uniform3f(
         loc('circle'),
         (x + rw / 2) * scaleX,
@@ -77,7 +80,7 @@ export function createWorldOverlays(gl, source, onIssue) {
       dispose,
       update(next) {
         state = next;
-        const wanted = new Set(next.paths.filter(Boolean));
+        const wanted = new Set([...next.paths.filter(Boolean), arrowPath]);
         for (const [path, t] of textures)
           if (t && !wanted.has(path)) {
             gl.deleteTexture(t);
@@ -89,7 +92,7 @@ export function createWorldOverlays(gl, source, onIssue) {
             source
               .decodeTexture(path)
               .then((image) => {
-                if (closed || !state.paths.includes(path)) {
+                if (closed || (path !== arrowPath && !state.paths.includes(path))) {
                   textures.delete(path);
                   return;
                 }
@@ -114,6 +117,7 @@ export function createWorldOverlays(gl, source, onIssue) {
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 textures.set(path, t);
+                if (path === arrowPath) arrowTexture = t;
               })
               .catch((error) => onIssue('Minimap: ' + error.message));
           }
@@ -131,17 +135,26 @@ export function createWorldOverlays(gl, source, onIssue) {
             gl.bufferSubData(gl.ARRAY_BUFFER, 0, state.vertices.subarray(i * 24, (i + 1) * 24));
             gl.drawArrays(gl.TRIANGLES, 0, 6);
           }
-          gl.uniform1i(loc('marker'), 1);
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, state.vertices.subarray(216, 228));
-          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          if (arrowTexture) {
+            gl.bindTexture(gl.TEXTURE_2D, arrowTexture);
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, state.vertices.subarray(216, 240));
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+          }
         }
-        if (portrait && rects.PlayerPortrait) {
-          prepare(rects.PlayerPortrait, w, h);
-          gl.uniform1i(loc('full'), 1);
-          gl.uniform1i(loc('marker'), 0);
-          gl.bindTexture(gl.TEXTURE_2D, portrait);
-          gl.drawArrays(gl.TRIANGLES, 0, 3);
-        }
+        if (portrait)
+          for (const name of ['PlayerPortrait', 'MicroButtonPortrait']) {
+            if (!rects[name]) continue;
+            prepare(rects[name], w, h);
+            if (name === 'MicroButtonPortrait') {
+              gl.uniform3f(loc('circle'), 0, 0, 1e9);
+              gl.uniform4f(loc('sampleRect'), 0.2, 0.1, 0.8, 0.94);
+            }
+            gl.uniform1i(loc('full'), 1);
+            gl.uniform1i(loc('marker'), 0);
+            gl.bindTexture(gl.TEXTURE_2D, portrait);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+          }
+        gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.depthMask(true);
       },
     };

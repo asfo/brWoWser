@@ -208,6 +208,7 @@ export function connectWorldSession({
           job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
           entryRequest = job;
           e.bw_world_unit_begin(...roster.selected.guid);
+          e.bw_world_hud_begin();
           worldEntry = {
             phase: 'entering',
             character: roster.selected,
@@ -252,6 +253,12 @@ export function connectWorldSession({
             if (!worldEntry.cinematic) return;
             send(WORLD.cinematicEnd);
             worldEntry = { ...worldEntry, cinematic: 0, cinematicStarted: false };
+          } else if (action.operation === 'tutorial-seen') {
+            if (!Number.isInteger(action.index) || action.index < 0 || action.index >= 256)
+              throw Error('Invalid tutorial index');
+            const body = new Uint8Array(4);
+            new DataView(body.buffer).setUint32(0, action.index, true);
+            send(0xfe, body);
           } else if (action.operation === 'movement') {
             if (worldEntry.phase !== 'world' || worldEntry.cinematic) return;
             const allowed = [
@@ -476,6 +483,26 @@ export function connectWorldSession({
           ...worldEntry,
           cinematic: new DataView(body.buffer, body.byteOffset, 4).getUint32(0, true),
         };
+        return;
+      }
+      if ([0x129, 0x12a, 0xfd].includes(opcode)) {
+        if (worldEntry) {
+          new Uint8Array(e.memory.buffer, e.bw_update_input(), body.length).set(body);
+          const code = e.bw_world_hud_packet(opcode, body.length);
+          if (!code) {
+            const v = new Uint32Array(e.memory.buffer, e.bw_world_hud_ptr(), 4251);
+            worldEntry = {
+              ...worldEntry,
+              hud: {
+                revision: v[0],
+                ready: v[1],
+                actions: Array.from(v.subarray(2, 146)),
+                spells: Array.from(v.subarray(147, 147 + v[146])),
+                tutorials: Array.from(v.subarray(4243, 4251)),
+              },
+            };
+          }
+        }
         return;
       }
       if (opcode === WORLD.update || opcode === WORLD.compressedUpdate) {

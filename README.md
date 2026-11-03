@@ -53,9 +53,9 @@ Use a newly created Human character on your local server and click **Enter World
 
 Character deletion uses the original confirmation dialog: type the displayed confirmation word and confirm. The roster changes only after server confirmation.
 
-After the introduction ends or is skipped, the selected FrameXML UI can show original player/main-menu/minimap artwork, a cached 3D portrait, server health/resources and nearby outdoor minimap textures. These additions need manual comparison; action buttons, chat, tracking and functional in-game menus remain unfinished.
+After the introduction ends or is skipped, the selected FrameXML UI can show original player/main-menu/minimap artwork, a cached 3D portrait, server health/resources and nearby outdoor minimap textures. The expanded HUD includes empty chat controls, bag/micro-menu artwork, server-supplied spell and stance icons, six action pages, account-aware introductory tutorial pages and outdoor minimap zoom/time/place name. These additions need manual comparison; spell execution, chat messages, tracking and functional in-game menus remain unfinished.
 
-Original map loading screens, initial static building/object and follow-camera collision, and zone music/ambience are available for manual validation. Stay near the starting area: race-specific collision dimensions, swimming, NPC reconstruction, a functional in-game HUD, combat and quests remain unfinished. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
+Original map loading screens, initial static building/object and follow-camera collision, and zone music/ambience are available for manual validation. Stay near the starting area: race-specific collision dimensions, swimming, NPC reconstruction, functional gameplay windows, combat and quests remain unfinished. See [known issues](docs/KNOWN_ISSUES.md) for the current limits. Browser/native visual testing is manual.
 
 ## Project layout
 

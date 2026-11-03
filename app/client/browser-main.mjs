@@ -239,6 +239,7 @@ const launch = (event) => {
           worldClient = null;
           worldHUD?.dispose();
           worldHUD = null;
+          window.worldHUDKey = null;
         }
         return;
       }
@@ -252,6 +253,7 @@ const launch = (event) => {
           worldClient = null;
           worldHUD?.dispose();
           worldHUD = null;
+          window.worldHUDKey = null;
         }
         window.worldStatus = { phase: 'error', message: entry.error };
         return;
@@ -264,6 +266,7 @@ const launch = (event) => {
       worldHUD
         ?.updateUnit(entry.unit)
         .catch((error) => console.warn('World UI unit: ' + error.message));
+      worldHUD?.updateHUD(entry.hud).catch((error) => console.warn('World HUD: ' + error.message));
       if (!entry.location) return;
       const key = JSON.stringify([
         entry.character.guid,
@@ -279,6 +282,7 @@ const launch = (event) => {
       const generation = ++worldGeneration;
       worldHUD?.dispose();
       worldHUD = null;
+      window.worldHUDKey = null;
       ensureCharacterSource();
       disposeCharacter();
       disposeBackground();
@@ -300,6 +304,7 @@ const launch = (event) => {
           entry,
           isCurrent: () => generation === worldGeneration,
           send: (action) => window.uiInput({ kind: 14, ...action }),
+          capturesUI: (event) => !!worldHUD?.captures(event, canvas),
           onIssue: (message) => console.warn('World: ' + message),
           onLoadingScreen: async () => {
             try {
@@ -357,6 +362,8 @@ const launch = (event) => {
           height: hudHeight,
           textureCache: uiTextureCache,
           glyphAtlas,
+          send: (action) => window.uiInput({ kind: 14, ...action }),
+          onZoom: (zoom) => client.setMinimapZoom(zoom),
           isCurrent: () => generation === worldGeneration,
           onStatus: (status) => {
             if (generation === worldGeneration) window.worldUIStatus = status;
@@ -366,6 +373,10 @@ const launch = (event) => {
             if (generation !== worldGeneration) hud.dispose();
             else {
               worldHUD = hud;
+              window.worldHUDKey = (key) => hud.key(key);
+              hud
+                .updateHUD(window.uiInputState?.world_entry?.hud || entry.hud)
+                .catch((error) => console.warn('World HUD: ' + error.message));
               hud
                 .updateUnit(window.uiInputState?.world_entry?.unit)
                 .catch((error) => console.warn('World UI unit: ' + error.message));
@@ -910,9 +921,11 @@ const launch = (event) => {
             window.uiInputState?.world_entry &&
             !window.uiInputState.world_entry.modal &&
             action.kind >= 1 &&
-            action.kind <= 7
+            action.kind <= 8
           )
-            return Promise.resolve();
+            return [3, 4].includes(action.kind)
+              ? Promise.resolve()
+              : worldHUD?.pointer(action) || Promise.resolve();
           if (worldLoading && ((action.kind >= 1 && action.kind <= 7) || action.kind === 13))
             return Promise.resolve();
           const task = inputQueue.then(() => performInput(action));
@@ -961,7 +974,10 @@ const launch = (event) => {
             document.querySelector('pre').hidden = false;
             document.querySelector('pre').textContent = 'UI: ' + error.message;
           },
-          () => window.uiInputState?.items || transition.result.host_result.items,
+          () =>
+            window.uiInputState?.world_entry && !window.uiInputState.world_entry.modal
+              ? worldHUD?.items || []
+              : window.uiInputState?.items || transition.result.host_result.items,
         );
         keyboardConnection = connectCanvasKeyboard(canvas, applyInput, (error) => {
           document.querySelector('pre').hidden = false;
@@ -1098,13 +1114,19 @@ const launch = (event) => {
               });
             }
             if (window.worldStatus?.phase === 'world' && window.uiInputState?.world_entry) {
-              worldHUD?.draw();
+              worldHUD
+                ?.environment(
+                  window.worldStatus.area_name || '',
+                  window.worldStatus.game_time_minutes,
+                )
+                .catch((error) => console.warn('World UI environment: ' + error.message));
               if (worldHUD?.rects)
                 worldClient?.drawOverlays(
                   worldHUD.rects,
                   viewport.logicalWidth,
                   viewport.logicalHeight,
                 );
+              worldHUD?.draw();
             }
             if (!worldLoading) {
               uiRenderer.draw();
@@ -1228,6 +1250,18 @@ window.addEventListener(
     if (window.worldStatus?.loadingScreen) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      return;
+    }
+    if (
+      event.key === 'Escape' &&
+      window.uiInputState?.world_entry &&
+      !window.uiInputState.world_entry.modal &&
+      window.worldStatus?.phase !== 'cinematic' &&
+      window.worldHUDKey
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.worldHUDKey('Escape').catch((error) => console.warn('World UI: ' + error.message));
       return;
     }
     if (event.code === 'Space' && window.uiInputState?.world_entry) return;

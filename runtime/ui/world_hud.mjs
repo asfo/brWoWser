@@ -1,4 +1,5 @@
 import { collectFrameXML } from './framexml_sources.mjs';
+import { sameUIPacket } from './packet_equal.mjs';
 import { createUIRenderer } from './webgl_renderer.mjs';
 
 // Asset transport, worker messages and WebGL submission only. Original layout,
@@ -18,13 +19,19 @@ export async function createWorldHUD({
   glyphAtlas,
   isCurrent = () => true,
   onStatus = () => {},
+  send = async () => {},
+  onZoom = () => {},
 }) {
   let worker,
     renderer,
     disposed = false,
     serial = 0,
     unitRevision = -1,
-    renderSerial = 0,
+    hudRevision = -1,
+    environmentKey,
+    queue = Promise.resolve(),
+    currentPacket,
+    currentItems = [],
     currentRects;
   const pending = new Map();
   const checkCurrent = () => {
@@ -66,7 +73,13 @@ export async function createWorldHUD({
     }
     for (const path of sources.textures) {
       checkCurrent();
-      const image = await source.decodeTexture(path);
+      let image;
+      try {
+        image = await source.decodeTexture(path);
+      } catch (error) {
+        if (sources.optionalTextures.includes(path)) continue;
+        throw error;
+      }
       textures.push({ path, width: image.width, height: image.height });
       images.set(path.toLowerCase().replaceAll('\\', '/'), image);
     }
@@ -110,63 +123,114 @@ export async function createWorldHUD({
       },
     });
     checkCurrent();
-    currentRects = snapshot.rects;
-    renderer = await createUIRenderer(gl, snapshot.packet, images, {
-      logicalWidth: width,
-      logicalHeight: height,
-      textureCache,
-      glyphAtlas,
-    });
-    checkCurrent();
-    onStatus({ phase: 'ready', ...snapshot, packet: undefined, issues: renderer.issues });
-    return {
-      dispose,
-      get rects() {
-        return currentRects;
-      },
-      async updateUnit(unit) {
-        if (!unit || unit.revision === unitRevision) return;
-        unitRevision = unit.revision;
-        const mine = ++renderSerial;
-        const next = await call({ kind: 'unit', unit });
-        checkCurrent();
+    const apply = async (next) => {
+      checkCurrent();
+      currentRects = next.rects;
+      currentItems = next.items;
+      onZoom(next.zoom);
+      for (const index of next.seen) await send({ operation: 'tutorial-seen', index });
+      if (!sameUIPacket(currentPacket, next.packet)) {
         const replacement = await createUIRenderer(gl, next.packet, images, {
           logicalWidth: width,
           logicalHeight: height,
           textureCache,
           glyphAtlas,
         });
-        if (disposed || !isCurrent() || mine !== renderSerial) {
+        if (disposed || !isCurrent()) {
           replacement.dispose();
           return;
         }
-        renderer.dispose();
+        renderer?.dispose();
         renderer = replacement;
-        currentRects = next.rects;
-        onStatus({ phase: 'ready', ...next, packet: undefined, issues: renderer.issues });
+        currentPacket = next.packet;
+      }
+      onStatus({
+        phase: 'ready',
+        ...next,
+        packet: undefined,
+        items: undefined,
+        issues: renderer.issues,
+      });
+    };
+    const schedule = (operation) => {
+      const job = queue.then(operation);
+      queue = job.catch(() => {});
+      return job;
+    };
+    await apply(snapshot);
+    return {
+      dispose,
+      get rects() {
+        return currentRects;
+      },
+      get items() {
+        return currentItems;
+      },
+      captures(event, canvas) {
+        const box = canvas.getBoundingClientRect(),
+          x = ((event.clientX - box.left) * width) / box.width,
+          y = ((box.bottom - event.clientY) * height) / box.height;
+        return [
+          'MainMenuBar',
+          'ShapeshiftBarFrame',
+          'MinimapCluster',
+          'PlayerFrame',
+          'TutorialFrame',
+          'ChatFrame1',
+          'ChatFrame1ButtonFrame',
+          'ChatFrame1Tab',
+          'ChatFrame2Tab',
+        ].some((name) => {
+          const r = currentRects?.[name];
+          return r && x >= r[0] && y >= r[1] && x < r[0] + r[2] && y < r[1] + r[3];
+        });
+      },
+      updateUnit(unit) {
+        if (!unit || unit.revision === unitRevision) return Promise.resolve();
+        unitRevision = unit.revision;
+        return schedule(async () => apply(await call({ kind: 'unit', unit })));
+      },
+      updateHUD(hud) {
+        if (!hud || hud.revision === hudRevision) return Promise.resolve();
+        hudRevision = hud.revision;
+        return schedule(async () => {
+          const records = await source.hudCatalog(hud),
+            textures = [];
+          for (const record of records) {
+            const key = record.path.toLowerCase().replaceAll('\\', '/');
+            if (!images.has(key)) {
+              const image = await source.decodeTexture(record.path);
+              images.set(key, image);
+              textures.push({ path: record.path, width: image.width, height: image.height });
+            }
+          }
+          await apply(await call({ kind: 'hud', hud, records, textures }));
+        });
+      },
+      environment(zone, minutes) {
+        minutes = Math.floor(minutes);
+        const key = zone + ':' + minutes;
+        if (key === environmentKey || !Number.isFinite(minutes)) return Promise.resolve();
+        environmentKey = key;
+        return schedule(async () => apply(await call({ kind: 'environment', zone, minutes })));
+      },
+      pointer(action) {
+        return schedule(async () => apply(await call({ kind: 'pointer', action })));
+      },
+      key(key) {
+        return schedule(async () => apply(await call({ kind: 'key', key })));
       },
       draw() {
-        if (!disposed) renderer.draw();
+        if (!disposed) renderer?.draw();
       },
-      async resize(w, h) {
-        const mine = ++renderSerial;
-        const next = await call({ kind: 'resize', width: w, height: h });
-        width = w;
-        height = h;
-        currentRects = next.rects;
-        checkCurrent();
-        const replacement = await createUIRenderer(gl, next.packet, images, {
-          logicalWidth: w,
-          logicalHeight: h,
-          textureCache,
-          glyphAtlas,
+      resize(w, h) {
+        return schedule(async () => {
+          const next = await call({ kind: 'resize', width: w, height: h });
+          width = w;
+          height = h;
+          currentPacket = null;
+          await apply(next);
         });
-        if (disposed || !isCurrent() || mine !== renderSerial) {
-          replacement.dispose();
-          return;
-        }
-        renderer.dispose();
-        renderer = replacement;
       },
     };
   } catch (error) {

@@ -11,6 +11,15 @@ listen((message) => {
       } else if (message.kind === 'unit') {
         if (!session) throw Error('World UI session is not ready');
         session.updateUnit(message.unit);
+      } else if (message.kind === 'hud') {
+        session.addTextures(message.textures || []);
+        session.updateHUD(message.hud, message.records);
+      } else if (message.kind === 'environment') {
+        session.environment(message.zone, message.minutes);
+      } else if (message.kind === 'pointer') {
+        session.pointer(message.action);
+      } else if (message.kind === 'key') {
+        session.key(message.key);
       } else if (message.kind === 'resize') {
         if (!session) throw Error('World UI session is not ready');
         session.resize(message.width, message.height);

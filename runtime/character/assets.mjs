@@ -149,6 +149,7 @@ export async function createCharacterAssetSource(files, config) {
   }
   return {
     readAudio,
+    hudCatalog: async (state) => (await call({ kind: 'hud-catalog', state })).records,
     readAsset: async (path) => new Uint8Array((await asset('bytes', path)).bytes),
     decodeTexture: (path) => asset('texture', path),
     world: (operation, data = {}) => worldCall(operation, data),

@@ -1,6 +1,6 @@
 # Project status
 
-Updated: 2026-10-30.
+Updated: 2026-11-03.
 
 brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and initial outdoor-world flow. An initial outdoor world-entry implementation is now available for manual validation; general in-world gameplay is not implemented.
 
@@ -42,16 +42,25 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - The selected profile now includes original Minimap.xml/Lua alongside WorldFrame, UIParent, PlayerFrame and MainMenuBar. Component lifecycle activation remains deferred; source import and browser appearance are separate validation steps.
 - C/WASM owns frame composition, font rasterization, StatusBar geometry and the initial unit identity APIs. Name, level, race, class, sex and GUID come from the authenticated roster and client metadata.
 - The shell appears after the introduction ends or is skipped, inside the existing canvas. It remains hidden during the introduction. Loading failures are isolated from the world connection and exposed through `window.worldUIStatus`.
-- General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, action buttons, chat and menu interaction remain unfinished.
+- General component `OnLoad`/`OnUpdate` lifecycles are explicitly deferred. Original callback definitions are retained, not replaced with successful no-ops. Full FrameXML loading, spell execution, chat messages and functional game menus remain unfinished.
 
 ## Player portrait, resource bars and minimap
 
 - A bounded C decoder reads raw/compressed build-12340 object updates and commits the local player's fields only after the complete packet parses. Creation initializes omitted fields to their protocol-defined zero values. Unsupported packets preserve the previous snapshot instead of closing the connection; `window.worldUnitStatus` exposes the latest decoder status.
 - C/Lua APIs expose known health/max health and the active power pool/type. The original health/resource StatusBars receive these server values, including rage/runic-power scaling. This is selected-player state, not general object/NPC reconstruction.
-- The owner character model supplies a cached 3D head portrait rendered to a small GPU surface. Camera/pose preparation stays in WASM and no pixels are read back to JavaScript. Native portrait framing/lighting still needs manual comparison.
-- WASM resolves the owner md5translate.trs map index, nine nearby minimap textures, north-up coordinates and the initial direction marker. Original FrameXML supplies minimap placement/artwork. Zoom buttons, tracking, POIs, indoor WMO minimaps and world-map interaction are pending.
+- The owner character model supplies a cached 3D head portrait rendered to a small GPU surface. Camera/pose preparation stays in WASM and no pixels are read back to JavaScript. The portrait uses a separate head camera, circular player-frame presentation and a cropped rectangular micro-button view. Roster equipment supplies race/sex-specific helmet attachments to both the character and portrait. Live inventory/equipment changes and native framing/lighting still need further implementation or manual comparison.
+- WASM resolves the owner md5translate.trs map index, nine nearby minimap textures, north-up coordinates and the initial direction marker. Original FrameXML supplies minimap placement/artwork. The original arrow texture replaces the synthetic triangle; C/WASM supplies facing and six outdoor zoom levels. AreaTable supplies the place name and server time supplies the clock. Tracking, calendar, POIs, indoor WMO minimaps and world-map interaction are deferred.
 - World previews use Item.dbc sheathe types and the model's matching storage attachments. Combat-driven unsheathing/equipment changes remain pending.
 - World rendering may present at up to 60 FPS. Scene decoding/simulation uses a worker separate from character/portrait/minimap texture reads; inactive character-selector ticks no longer run behind the world. Native locomotion blending and sustained frame pacing remain under review.
+
+## Expanded in-game HUD
+
+- Original action, stance/form/aura, bag, micro-menu, empty chat, tutorial and death-knight rune definitions are imported into the world C/Lua VM. No HTML controls or browser text rasterization are added.
+- C parses action slots, learned spells and account tutorial flags from server packets. Owner Spell/SpellIcon/Item tables resolve icons in the asset worker. C/Lua owns page selection, learned-form ordering, active shapeshift highlighting and original frame composition. Six action pages can be selected with the original arrow buttons.
+- Initial movement, camera and jumping tutorial pages use the original illustrations and Lua content. The entry panel respects account tutorial flags and the tutorial CVar; visited pages are acknowledged to the server. General gameplay-driven tutorial triggers remain deferred.
+- Chat remains empty with its tabs, scroll controls and input border visible. Bag, micro-menu, spell and stance controls retain artwork and pressed/hover surfaces without opening windows or issuing gameplay actions. Rune artwork is initial presentation only; live cooldown/conversion handling remains deferred.
+- Minimap zoom controls and tutorial navigation/close controls are active. UI pointer handling is isolated from camera orbit/zoom. Unchanged UI packets reuse the GPU surface instead of rebuilding all glyphs during idle world frames.
+- The expanded owner-resource import resolves 63 source resources and 2,182 objects with no draw-packet issues in the initial shell. This is source admission evidence only: browser appearance, tutorial navigation, equipped helmets, class bars and page/zoom interaction require the owner's manual review.
 
 ## Static collision and initial world audio
 

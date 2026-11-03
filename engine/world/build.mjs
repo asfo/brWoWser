@@ -6,6 +6,8 @@ const exports = [
   'world_minimap_index',
   'world_minimap_sample',
   'world_minimap_paths',
+  'world_minimap_zoom',
+  'world_area_name',
   'world_loading_map',
   'world_loading_screen',
   'world_loading_path',

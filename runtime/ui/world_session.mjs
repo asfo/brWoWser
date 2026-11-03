@@ -1,3 +1,4 @@
+import { worldLayout } from './world_layout.mjs';
 import { frameXMLHash } from './framexml_sources.mjs';
 import { luaHost } from '../lua/host.mjs';
 import { readDrawList, readRenderPacket } from './draw_bridge.mjs';
@@ -31,7 +32,7 @@ export async function openWorldUI({
       if p and max and max>0 then PlayerFrameManaBar:SetMinMaxValues(0,max);PlayerFrameManaBar:SetValue(p);
         local colors={[0]={0,0,1},[1]={1,0,0},[2]={1,.5,.25},[3]={1,1,0},[4]={0,1,1},[5]={.5,.5,.5},[6]={0,.82,1}};local c=colors[kind] or colors[0];
         PlayerFrameManaBar:SetStatusBarColor(c[1],c[2],c[3]);PlayerFrameManaBarText:SetText(p.." / "..max) end
-      PlayerLevelText:SetText(UnitLevel("player"));`);
+      PlayerLevelText:SetText(UnitLevel("player"));WorldUIRefreshActions();`);
   };
   const encoder = new TextEncoder(),
     decoder = new TextDecoder();
@@ -157,15 +158,8 @@ export async function openWorldUI({
       check(e.loader_load(), entry.path);
     }
     e.frame_template_mode(0);
-    // Start with roster identity. Health/resources are applied only from decoded
-    // server fields; general component lifecycles remain deferred.
-    run(
-      'PlayerName:SetText(UnitName("player"));PlayerLevelText:SetText(UnitLevel("player"));' +
-        'PlayerRestIcon:Hide();PlayerAttackIcon:Hide();PlayerStatusTexture:Hide();' +
-        'PlayerFrameManaBarText:SetText("");PlayerFrameHealthBarText:SetText("");' +
-        'MainMenuBarPageNumber:SetText(GetActionBarPage());BasicScriptErrors:Hide();' +
-        'MinimapCompassTexture:Hide();MiniMapMailFrame:Hide();MiniMapBattlefieldFrame:Hide()',
-    );
+    run(worldLayout);
+    check(e.frame_update_scroll(), 'World UI scroll layout');
     for (const event of ['PLAYER_LOGIN', 'PLAYER_ENTERING_WORLD']) {
       name(event);
       check(e.frame_event(0), 'World UI entry event');
@@ -175,25 +169,91 @@ export async function openWorldUI({
     return {
       dispose,
       updateUnit: applyUnit,
+      updateHUD(hud, records = []) {
+        for (const record of records) {
+          const path = encoder.encode(record.path + '\0'),
+            label = encoder.encode(record.name + '\0'),
+            bytes = new Uint8Array(16 + path.length + label.length);
+          new Uint32Array(bytes.buffer, 0, 4).set([
+            record.id,
+            record.kind,
+            record.order,
+            record.form,
+          ]);
+          bytes.set(path, 16);
+          bytes.set(label, 16 + path.length);
+          input(bytes);
+          check(e.world_ui_record(bytes.length), 'World HUD metadata');
+        }
+        const data = new Uint32Array(4251);
+        data[0] = hud.revision;
+        data[1] = hud.ready;
+        data.set(hud.actions, 2);
+        data[146] = hud.spells.length;
+        data.set(hud.spells, 147);
+        data.set(hud.tutorials, 4243);
+        input(new Uint8Array(data.buffer));
+        check(e.world_ui_hud(data.byteLength), 'World HUD state');
+        run('WorldUIRefreshHUD()');
+        check(e.frame_update_scroll(), 'World HUD scroll');
+      },
+      addTextures(textures) {
+        for (const texture of textures) {
+          name(texture.path);
+          check(e.frame_texture_asset(texture.width, texture.height), 'World HUD dynamic texture');
+        }
+      },
+      environment(zone, minutes) {
+        e.world_ui_time(minutes);
+        run('WorldUIEnvironment(' + JSON.stringify(zone) + ')');
+      },
+      pointer(action) {
+        const status = e.frame_input_action(action.kind, action.x, action.y, action.delta || 0);
+        if (status !== 2) check(status, 'World UI input');
+        check(e.frame_update_scroll(), 'World UI scroll');
+      },
+      key(key) {
+        if (key === 'Escape') run('TutorialFrame:Hide()');
+      },
       snapshot() {
         if (disposed) throw Error('World UI is closed');
         const items = readDrawList(e, { visibleOnly: true });
         return {
+          items: items.filter((row) => row.type < 11 || row.type === 14 || row.type === 15),
           packet: readRenderPacket(e, { items, visibleOnly: true }),
           objects: e.frame_count(),
           resources: sources.resources.length,
           tocEntries: sources.toc.length,
-          lifecycle: 'definitions-loaded',
+          lifecycle: 'selected-hud-active',
           protectedFailures: e.frame_protected_failures(),
+          zoom: e.world_ui_zoom(),
+          seen: Array.from({ length: 8 }, (_, i) => ({
+            word: i,
+            value: e.world_ui_seen(i),
+          })).flatMap(({ word, value }) =>
+            Array.from({ length: 32 }, (_, bit) =>
+              value & (1 << bit) ? word * 32 + bit : -1,
+            ).filter((i) => i >= 0),
+          ),
           rects: Object.fromEntries(
-            ['PlayerPortrait', 'Minimap'].map((name) => [
-              name,
-              items.find((row) => row.name === name)?.rect,
-            ]),
+            [
+              'PlayerFrame',
+              'PlayerPortrait',
+              'MicroButtonPortrait',
+              'Minimap',
+              'MinimapCluster',
+              'MainMenuBar',
+              'ShapeshiftBarFrame',
+              'TutorialFrame',
+              'ChatFrame1',
+              'ChatFrame1ButtonFrame',
+              'ChatFrame1Tab',
+              'ChatFrame2Tab',
+            ].map((name) => [name, items.find((row) => row.name === name)?.rect]),
           ),
           deferred: ['UIParent', 'PlayerFrame', 'MainMenuBar', 'Minimap'],
           scope:
-            'Original selected FrameXML definitions and Lua, C/WASM layout and roster identity. Selected server health/resource fields are applied explicitly; general FrameXML lifecycle, unit/action APIs and interaction remain pending.',
+            'Original selected FrameXML and Lua with C/WASM layout, player resources, action pages and introductory tutorials. General gameplay/window lifecycles and native visual equivalence remain pending.',
         };
       },
       resize(w, h) {

@@ -44,10 +44,12 @@ Keep this file and `STATUS.md` current when a milestone changes. Check a visual 
 - [ ] Compare race introductions, sky/cloud rendering, WMO decoration, particles, narration and skip-to-player handoff against the native client.
 - [x] Load the initial selected original FrameXML/Lua dependency closure in a separate C/WASM VM and draw player/main-menu artwork inside the game canvas.
 - [x] Add initial cached 3D player portrait, selected server health/resource fields and source-texture outdoor minimap.
-- [ ] Manually compare portrait framing, resource bars and minimap; implement zoom/tracking/POIs, indoor maps and interaction.
+- [ ] Manually compare portrait framing, resource bars and minimap; compare the original arrow, outdoor zoom/place name/clock and implement tracking/POIs, indoor maps and remaining interaction.
 - [ ] Finish general FrameXML lifecycle activation and remaining source dependencies.
 - [ ] Decode authoritative player/object fields needed by Unit and action APIs; deliver initial world-entry and player-state events to the original Lua frames.
-- [ ] Bring up the minimal in-game HUD (player frame, action bars, chat, main menu), then enable controls against real server state.
+- [x] Import original empty chat, bag/micro-menu, tutorial, action, stance/form/aura and rune artwork; connect initial server action/spell/tutorial state and C/Lua paging.
+- [ ] Manually compare the expanded HUD, helmet portraits, class resources, tutorial entry/navigation, minimap zoom/time/place name and six action pages.
+- [ ] Enable spell/stance execution, chat messages, bag/micro-menu windows, rune updates and general tutorial triggers against authoritative server state.
 - [ ] In-game objects/NPCs, interaction, inventory, spells, and quests.
 - [ ] Streaming, resource budgets, and performance work for large scenes.
 

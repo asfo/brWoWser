@@ -3,6 +3,7 @@
 #include "loader.h"
 #include "glue_state.h"
 #include "world_api.h"
+#include "world_hud_api.h"
 #include <stdint.h>
 #include <string.h>
 #define CAPACITY 1048576
@@ -54,6 +55,21 @@ uint32_t world_ui_player(uint32_t low, uint32_t high, uint32_t race, uint32_t cl
 }
 uint32_t world_ui_text(uint32_t field, uint32_t length) {
   return length > CAPACITY ? 1 : bw_world_ui_text(field, input, length);
+}
+uint32_t world_ui_hud(uint32_t n) {
+  return n > CAPACITY ? 1 : bw_world_hud_state(input, n);
+}
+uint32_t world_ui_record(uint32_t n) {
+  return n > CAPACITY ? 1 : bw_world_hud_record(input, n);
+}
+uint32_t world_ui_seen(uint32_t i) {
+  return bw_world_hud_seen(i);
+}
+uint32_t world_ui_zoom(void) {
+  return bw_world_hud_zoom();
+}
+void world_ui_time(uint32_t minutes) {
+  bw_world_hud_time(minutes);
 }
 uint32_t world_ui_state(uint32_t length) {
   return length > CAPACITY ? 1 : bw_world_ui_state(input, length);

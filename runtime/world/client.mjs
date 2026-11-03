@@ -18,6 +18,7 @@ export async function createWorldClient({
   entry,
   audioSettings = [],
   send,
+  capturesUI = () => false,
   onIssue = console.warn,
   isCurrent = () => true,
   onProgress = () => {},
@@ -46,7 +47,8 @@ export async function createWorldClient({
   let modal = false,
     inputX = 0,
     inputY = 0,
-    inputZoom = 0;
+    inputZoom = 0,
+    minimapZoom = 0;
   const keys = new Set(),
     tiles = new Map(),
     structures = new Map(),
@@ -351,6 +353,7 @@ export async function createWorldClient({
     async function sample(elapsed) {
       const data = {
         elapsed,
+        minimapZoom,
         controls: controls(),
         aspect: canvas.width / canvas.height,
         map: entry.location.map,
@@ -524,7 +527,7 @@ export async function createWorldClient({
       canvas,
       'pointerdown',
       (event) => {
-        if (event.button === 2 && !cinematic && !modal) {
+        if (event.button === 2 && !cinematic && !modal && !capturesUI(event)) {
           orbiting = true;
           canvas.focus();
           event.preventDefault();
@@ -559,7 +562,7 @@ export async function createWorldClient({
       canvas,
       'wheel',
       (event) => {
-        if (!cinematic && !modal) {
+        if (!cinematic && !modal && !capturesUI(event)) {
           inputZoom += event.deltaY;
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -592,6 +595,9 @@ export async function createWorldClient({
           voice?.pause();
           needsHandoff = true;
         }
+      },
+      setMinimapZoom(zoom) {
+        minimapZoom = zoom;
       },
       drawOverlays(rects, width, height) {
         overlays?.draw(rects, width, height, portraitTexture);
@@ -723,6 +729,7 @@ export async function createWorldClient({
           locomotion: state.player[5],
           grounded: !!state.player[7],
           area: state.area,
+          area_name: state.areaName,
           audioPlayback: zoneAudio?.status(),
           audio: state.audio.map(({ id, path }) => ({ id, path })),
           queued_assets: loadQueue.length,

@@ -1,7 +1,7 @@
 // Bounded current-client MPQ member reads. Table lookup and zlib decoding stay
 // in the existing C/WASM modules; large members are decoded sector by sector.
 export async function openArchive({ read, size, lookupWasm, decoderWasm, onPhase = () => {} }) {
-  const limit = 33554432;
+  const limit = 67108864;
   async function range(offset, count) {
     if (
       !Number.isSafeInteger(offset) ||
@@ -114,7 +114,7 @@ export async function openArchive({ read, size, lookupWasm, decoderWasm, onPhase
     const sectors = Math.ceil(logical / sectorSize),
       offsetsCount = sectors + 1 + (flags & 0x04000000 ? 1 : 0);
     const tableBytes = offsetsCount * 4;
-    if (sectors > 8192 || tableBytes > raw.length) throw Error('MPQ sector table capacity');
+    if (sectors > 16384 || tableBytes > raw.length) throw Error('MPQ sector table capacity');
     const offsets = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
     let previous = offsets.getUint32(0, true);
     if (previous !== tableBytes) throw Error('Invalid MPQ sector table start');

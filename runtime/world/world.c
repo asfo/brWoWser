@@ -1594,3 +1594,10 @@ uint32_t world_minimap_sample(void) {
 uint32_t world_minimap_paths(void) {
   return (uint32_t)(uintptr_t)bw_minimap_paths();
 }
+
+void world_minimap_zoom(uint32_t zoom) {
+  bw_minimap_zoom(zoom);
+}
+uint32_t world_area_name(void) {
+  return (uint32_t)(uintptr_t)bw_world_area_name(world_area());
+}

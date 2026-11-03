@@ -21,14 +21,31 @@ export const worldUIEntries = [
   'UnitFrame.xml',
   'VoiceChat.xml',
   'ReadyCheck.xml',
+  'UIPanelTemplates.lua',
+  'UIPanelTemplates.xml',
+  'ItemButtonTemplate.xml',
+  'Cooldown.xml',
+  'ActionButtonTemplate.xml',
   'MainMenuBar.xml',
+  'MainMenuBarMicroButtons.xml',
+  'ActionBarFrame.xml',
+  'BonusActionBarFrame.xml',
+  'MainMenuBarBagButtons.xml',
+  'AutoComplete.xml',
+  'UIMenu.xml',
+  'ChatFrame.xml',
+  'FloatingChatFrame.xml',
+  'TutorialFrame.xml',
   'PlayerFrame.xml',
+  'RuneFrame.xml',
   'Minimap.xml',
+  'GameTime.xml',
 ];
 const templateEntries = new Set([
   'GameTooltip.xml',
   'UIDropDownMenu.xml',
   'SecureTemplates.xml',
+  'AutoComplete.xml',
   'VoiceChat.xml',
   'ReadyCheck.xml',
 ]);
@@ -63,12 +80,13 @@ export async function collectFrameXML(readAsset) {
   const resources = new Map(),
     events = new Set(['PLAYER_LOGIN', 'PLAYER_ENTERING_WORLD']),
     fonts = new Set(),
-    textures = new Set();
+    textures = new Set(),
+    optionalTextures = new Set();
   let total = 0;
   async function collect(path, depth = 0) {
     const key = path.toLowerCase();
     if (resources.has(key)) return;
-    if (depth > 32 || resources.size >= 128) throw Error('FrameXML dependency capacity');
+    if (depth > 32 || resources.size >= 256) throw Error('FrameXML dependency capacity');
     const bytes = new Uint8Array(await readAsset(path));
     total += bytes.length;
     if (bytes.length > 1048576 || total > 16 * 1048576) throw Error('FrameXML source capacity');
@@ -76,6 +94,15 @@ export async function collectFrameXML(readAsset) {
     resources.set(key, { path, bytes, sha256: await frameXMLHash(bytes) });
     for (const match of source.matchAll(/RegisterEvent\(\s*["']([A-Z][A-Z_0-9]+)["']/g))
       events.add(match[1]);
+    if (/\.lua$/i.test(path)) {
+      for (const match of source.matchAll(/["'](Interface(?:\\\\|\\)[^"'\r\n]+)["']/g)) {
+        const texture = match[1].replaceAll('\\\\', '\\');
+        if (!/\.(lua|xml|m2|mdx|mdl)$/i.test(texture) && !texture.includes('%')) {
+          textures.add(texture);
+          optionalTextures.add(texture);
+        }
+      }
+    }
     if (/\.xml$/i.test(path)) {
       // Only discover literal resource references. XML semantics stay in WASM.
       for (const match of source.matchAll(/\bfont="([^"\r\n]+\.ttf)"/gi)) fonts.add(match[1]);
@@ -83,6 +110,9 @@ export async function collectFrameXML(readAsset) {
         /\b(?:file|bgFile|edgeFile)="(Interface[\\/][^"\r\n]+)"/gi,
       ))
         if (!/\.(?:xml|lua)$/i.test(match[1])) textures.add(match[1]);
+      for (const match of source.matchAll(/LoadMicroButtonTextures\(self,\s*"([A-Za-z]+)"/g))
+        for (const suffix of ['Up', 'Down', 'Disabled'])
+          textures.add('Interface\\Buttons\\UI-MicroButton-' + match[1] + '-' + suffix);
       const base = path.slice(0, path.lastIndexOf('/') + 1);
       for (const match of source.matchAll(/<(?:Script|Include)\b[^>]*\bfile="([^"]+)"/g))
         await collect(pathOf(match[1], base), depth + 1);
@@ -94,12 +124,26 @@ export async function collectFrameXML(readAsset) {
       throw Error('FrameXML entry absent from original TOC: ' + name);
     await collect(path);
   }
+  const canonical = (path) => path.toLowerCase().replaceAll('\\', '/');
+  const uniqueTextures = (values) => [
+    ...new Map(values.map((path) => [canonical(path), path])).values(),
+  ];
   return {
     toc,
     resources: [...resources.values()],
     events: [...events],
     fonts: [...fonts],
-    textures: [...textures],
+    textures: uniqueTextures([
+      ...textures,
+      'Interface\\Buttons\\UI-Quickslot',
+      'Interface\\Buttons\\UI-MicroButtonCharacter-Up',
+      'Interface\\Buttons\\UI-MicroButtonCharacter-Down',
+      'Interface\\Buttons\\UI-MicroButton-Hilight',
+      'Interface\\Buttons\\Button-Backpack-Up',
+      'Interface\\TargetingFrame\\UI-PVP-Alliance',
+      'Interface\\TargetingFrame\\UI-PVP-Horde',
+    ]),
+    optionalTextures: [...optionalTextures],
     entries: worldUIEntries.map((name) => ({
       path: pathOf(name),
       templates: templateEntries.has(name),

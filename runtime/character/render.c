@@ -212,8 +212,8 @@ uint32_t character_view(uint32_t authored, float aspect) {
              : i == 2 ? target[2] + height * .03f
                       : 0;
     if (authored == 3) {
-      target[i] = camera_input[i];
-      eye[i] = target[i] + (i == 0 ? height * .5f : i == 2 ? height * .02f : 0);
+      target[i] = camera_input[i] + (i == 2 ? height * .045f : 0);
+      eye[i] = target[i] + (i == 0 ? height * .43f : i == 1 ? -height * .1f : height * .02f);
     }
     forward[i] = target[i] - eye[i];
   }

@@ -1,9 +1,10 @@
+import { createHUDCatalog } from '../../runtime/ui/hud_catalog.mjs';
 import { readLocalSource } from '../../runtime/io/local_source.mjs';
 import { makePlanner } from '../../engine/archive-startup/planner.mjs';
 import { openArchive } from '../../runtime/io/member_reader.mjs';
 import { createRangeCache } from '../../runtime/io/range_cache.mjs';
 let archives, ordered, lookupWasm, decoderWasm, blp, files;
-let world;
+let world, hudCatalog;
 const collisionMeshes = new Map();
 let collisionSerial = 0;
 async function worldOperation(data) {
@@ -318,7 +319,8 @@ async function worldOperation(data) {
         },
       });
     }
-    const minimap = { vertices: floats(world.world_minimap_sample(), 228).slice(), paths: [] };
+    world.world_minimap_zoom(data.minimapZoom || 0);
+    const minimap = { vertices: floats(world.world_minimap_sample(), 240).slice(), paths: [] };
     for (let i = 0; i < 9; i++) {
       const path = new Uint8Array(world.memory.buffer, world.world_minimap_paths() + i * 64, 64);
       minimap.paths.push(new TextDecoder().decode(path.subarray(0, path.indexOf(0))));
@@ -329,6 +331,10 @@ async function worldOperation(data) {
       minimap,
       movement,
       area: world.world_area(),
+      areaName: (() => {
+        const b = new Uint8Array(world.memory.buffer, world.world_area_name(), 256);
+        return new TextDecoder().decode(b.subarray(0, b.indexOf(0)));
+      })(),
       audio: audioState(),
       camera: floats(world.world_camera(), 10).slice(),
       view: floats(world.world_view_ptr(), 83).slice(),
@@ -427,7 +433,10 @@ async function drain() {
       let result;
       if (data.kind === 'init') result = await init(data);
       else if (data.kind === 'world') result = await worldOperation(data);
-      else if (data.kind === 'texture') {
+      else if (data.kind === 'hud-catalog') {
+        hudCatalog ??= createHUDCatalog(bytes);
+        result = { records: await hudCatalog(data.state) };
+      } else if (data.kind === 'texture') {
         const path = /\.[A-Za-z0-9]+$/.test(data.path) ? data.path : data.path + '.blp';
         if (!/\.blp$/i.test(path)) throw Error('unsupported image format ' + path);
         const b = await bytes(path);

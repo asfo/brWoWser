@@ -2,7 +2,11 @@
 #include <math.h>
 #include <string.h>
 static char directory[64], hashes[64][64][37], paths[9][64];
-static float geometry[9 * 24 + 12];
+static uint32_t zoom;
+void bw_minimap_zoom(uint32_t value) {
+  zoom = value > 5 ? 5 : value;
+}
+static float geometry[9 * 24 + 24];
 char *bw_minimap_directory(void) {
   return directory;
 }
@@ -62,7 +66,7 @@ static void quad(float *out, float x, float y, float w, float h) {
   }
 }
 const float *bw_minimap_sample(float x, float y, float facing) {
-  const float tile = 1600.f / 3, diameter = 1600.f / 3;
+  const float tile = 1600.f / 3, diameter = (1400.f - zoom * 200.f) / 3;
   float tx = 32 - y / tile, ty = 32 - x / tile;
   int cx = (int)floorf(tx), cy = (int)floorf(ty);
   uint32_t at = 0;
@@ -78,12 +82,12 @@ const float *bw_minimap_sample(float x, float y, float facing) {
            tile / diameter, tile / diameter);
     }
   /* North-up map: world +X points up and +Y points left. */
-  float c = cosf(facing), s = sinf(facing), points[] = {0, .11f, -.065f, -.07f, .065f, -.07f};
-  for (int i = 0; i < 3; i++) {
-    float a = points[i * 2], b = points[i * 2 + 1];
-    geometry[216 + i * 4] = a * c - b * s;
-    geometry[217 + i * 4] = a * s + b * c;
-    geometry[218 + i * 4] = geometry[219 + i * 4] = 0;
+  quad(geometry + 216, .5f - .1f, .5f - .1f, .2f, .2f);
+  float c = cosf(facing), s = sinf(facing);
+  for (int i = 0; i < 6; i++) {
+    float x = geometry[216 + i * 4], y = geometry[217 + i * 4];
+    geometry[216 + i * 4] = x * c - y * s;
+    geometry[217 + i * 4] = x * s + y * c;
   }
   return geometry;
 }

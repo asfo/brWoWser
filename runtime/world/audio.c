@@ -170,3 +170,9 @@ const float *bw_world_audio_info(void) {
 const char *bw_world_audio_paths(void) {
   return &paths[0][0];
 }
+
+const char *bw_world_area_name(uint32_t id) {
+  uint32_t row = row_for(0, id);
+  const char *name = row == UINT32_MAX ? NULL : string(0, row, 11);
+  return name ? name : "";
+}

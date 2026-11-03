@@ -1,4 +1,5 @@
 #include "world_api.h"
+#include "world_hud_api.h"
 #include "lauxlib.h"
 #include <math.h>
 #include <stdio.h>
@@ -58,6 +59,10 @@ uint32_t bw_world_ui_state(const uint8_t *b, uint32_t n) {
 }
 static int call(lua_State *L) {
   int op = lua_tointeger(L, lua_upvalueindex(1));
+  if (op == 19) {
+    lua_pushinteger(L, player.known[122] ? player.values[122] >> 24 : 0);
+    return 1;
+  }
   if (op == 0) {
     lua_pushnumber(L, player.seconds);
     return 1;
@@ -245,15 +250,17 @@ uint32_t bw_world_ui_register(lua_State *L) {
     lua_setfield(L, -2, bit_names[i]);
   }
   lua_setglobal(L, "bit");
-  const char *names[] = {"GetTime",       "GetLocale",     "GetActionBarPage", "GetBuildInfo",
-                         "UnitExists",    "UnitName",      "UnitLevel",        "UnitRace",
-                         "UnitClass",     "UnitSex",       "UnitFactionGroup", "UnitGUID",
-                         "UnitHealth",    "UnitHealthMax", "UnitPower",        "UnitPowerMax",
-                         "UnitPowerType", "UnitMana",      "UnitManaMax"};
+  const char *names[] = {
+      "GetTime",       "GetLocale",     "GetActionBarPage", "GetBuildInfo",
+      "UnitExists",    "UnitName",      "UnitLevel",        "UnitRace",
+      "UnitClass",     "UnitSex",       "UnitFactionGroup", "UnitGUID",
+      "UnitHealth",    "UnitHealthMax", "UnitPower",        "UnitPowerMax",
+      "UnitPowerType", "UnitMana",      "UnitManaMax",      "WorldHUDActiveForm"};
   for (uint32_t i = 0; i < sizeof(names) / sizeof(*names); i++) {
     lua_pushinteger(L, i);
     lua_pushcclosure(L, call, 1);
     lua_setglobal(L, names[i]);
   }
+  bw_world_hud_register(L);
   return 0;
 }

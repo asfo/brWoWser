@@ -1,6 +1,9 @@
 // Client-owned DBC bytes stay in memory; authored source contains no client tables.
-export function parseDBC(bytes, { name = 'DBC', minFields = 1, allowPacked = false } = {}) {
-  if (!(bytes instanceof Uint8Array) || bytes.length < 20 || bytes.length > 33554432)
+export function parseDBC(
+  bytes,
+  { name = 'DBC', minFields = 1, allowPacked = false, maxBytes = 33554432 } = {},
+) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 20 || bytes.length > maxBytes)
     throw Error(name + ': table capacity');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = view.getUint32(4, true),
@@ -300,6 +303,27 @@ export async function createCharacterCatalog(readAsset) {
       }
     }
     const attachments = [];
+    const helmet = equipment.find((item) => item.inventoryType === 1 && item.display);
+    if (helmet) {
+      const row = itemRows.get(helmet.display);
+      if (row === undefined) throw Error('Helmet display unavailable: ' + helmet.display);
+      const base = items.text(row, 1).replace(/\.(?:mdx|m2)$/i, ''),
+        texture = items.text(row, 3);
+      if (base) {
+        const prefix = 'Item\\ObjectComponents\\Head\\';
+        const head = modelPath(
+          prefix + base + '_' + races.text(raceRow, 6) + (gender ? 'F' : 'M') + '.m2',
+        );
+        await readAsset(head);
+        attachments.push({
+          attachmentId: 11,
+          gripHand: 0,
+          modelPath: head,
+          skinPath: head.replace(/\.m2$/i, '00.skin'),
+          texture: texturePath(prefix + texture),
+        });
+      }
+    }
     for (const [attachmentId, types] of [
       [1, [13, 17, 21, 15, 25, 26]],
       [2, [14, 22, 23]],

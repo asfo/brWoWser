@@ -7,6 +7,7 @@ const root = new URL('../', import.meta.url);
 const files = Object.fromEntries(
   await Promise.all(
     [
+      'world_hud.c',
       'world_updates.c',
       'srp.c',
       'warden_transfer.c',
@@ -69,6 +70,9 @@ else {
       '-Wl,-z,stack-size=65536',
       '-Wl,--max-memory=67108864',
       ...[
+        'bw_world_hud_begin',
+        'bw_world_hud_ptr',
+        'bw_world_hud_packet',
         'bw_update_input',
         'bw_world_unit_begin',
         'bw_world_unit_update',
@@ -103,6 +107,7 @@ else {
       'auth.wasm',
       'srp.c',
       'world_updates.c',
+      'world_hud.c',
       'world_inflate.c',
       'warden_cpu.c',
       'warden_memory.c',

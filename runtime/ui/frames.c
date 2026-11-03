@@ -125,7 +125,7 @@ struct BwUiRuntime {
   uint32_t protected_failures;
   char protected_error[1024];
   BwUiRuntime **handle;
-  int handle_reference, error_handler, metatables[15];
+  int handle_reference, error_handler, metatables[17];
   BwUiXmlDispatch dispatch;
   void *dispatch_context;
   int options_readonly;
@@ -539,17 +539,21 @@ static Object *owner(lua_State *L, int index) {
   return o;
 }
 static int frame_type(uint32_t type) {
-  return type <= 10 || type == BW_UI_STATUSBAR;
+  return type <= 10 || type == BW_UI_STATUSBAR || type == BW_UI_MESSAGE;
 }
 static const char *type_names[] = {
-    "Frame", "Button",   "CheckButton", "EditBox", "ScrollFrame", "Slider", "SimpleHTML",
-    "Model", "ModelFFX", "MovieFrame",  "Texture", "FontString",  "Font",   "StatusBar"};
+    "Frame",   "Button",     "CheckButton", "EditBox",   "ScrollFrame",
+    "Slider",  "SimpleHTML", "Model",       "ModelFFX",  "MovieFrame",
+    "Texture", "FontString", "Font",        "StatusBar", "ScrollingMessageFrame",
+    "Alpha"};
 static uint32_t type_id(const char *s) {
+  if (!strcmp(s, "ScrollingMessageFrame") || !strcmp(s, "MessageFrame"))
+    return BW_UI_MESSAGE;
   /* WorldFrame has frame semantics here; the outdoor WASM renderer supplies
    * its scene behind the UI instead of creating another browser surface. */
-  if (!strcmp(s, "WorldFrame") || !strcmp(s, "Minimap"))
+  if (!strcmp(s, "WorldFrame") || !strcmp(s, "Minimap") || !strcmp(s, "Cooldown"))
     return BW_UI_FRAME;
-  for (uint32_t i = 0; i < 14; i++) {
+  for (uint32_t i = 0; i < 16; i++) {
     const char *a = s, *b = type_names[i];
     while (*a && *b) {
       char x = *a++, y = *b++;
@@ -1228,6 +1232,13 @@ static int method(lua_State *L) {
   Object *o = owner(L, 1);
   BwUiRuntime *r = o->runtime;
   const char *m = lua_tostring(L, lua_upvalueindex(2));
+  /* Stopping an imported Alpha animation restores its owner without running
+   * component update scripts. Active animation timelines remain deferred. */
+  if (!strcmp(m, "Stop") && o->type == BW_UI_ALPHA_ANIMATION) {
+    if (o->parent)
+      o->parent->alpha = 1;
+    return 0;
+  }
   if (!strcmp(m, "StartMovie")) {
     const char *path = luaL_checkstring(L, 2);
     double volume = luaL_checknumber(L, 3);
@@ -1390,7 +1401,7 @@ static int method(lua_State *L) {
     return 1;
   }
   if (!strcmp(m, "SetTexture")) {
-    if (lua_isnoneornil(L, 2)) {
+    if (lua_isnoneornil(L, 2) || (lua_type(L, 2) == LUA_TSTRING && !*lua_tostring(L, 2))) {
       free(o->texture_file);
       o->texture_file = NULL;
       lua_pushnumber(L, 1);
@@ -2172,6 +2183,25 @@ static int method(lua_State *L) {
     lua_pushnumber(L, v);
     return 1;
   }
+  if (!strcmp(m, "SetDrawLayer")) {
+    const char *name = luaL_checkstring(L, 2);
+    const char *names[] = {"BACKGROUND", "BORDER", "ARTWORK", "OVERLAY", "HIGHLIGHT"};
+    for (unsigned i = 0; i < 5; i++)
+      if (!strcmp(name, names[i])) {
+        o->draw_layer = i + 1;
+        return 0;
+      }
+    return luaL_error(L, "Invalid draw layer");
+  }
+  if (!strcmp(m, "SetSize")) {
+    double w = luaL_checknumber(L, 2), h = luaL_checknumber(L, 3);
+    if (!isfinite(w) || !isfinite(h) || w < 0 || h < 0)
+      return luaL_error(L, "Invalid region size");
+    o->width = w;
+    o->height = h;
+    o->width_known = o->height_known = 1;
+    return 0;
+  }
   if (!strcmp(m, "SetWidth") || !strcmp(m, "SetHeight") || !strcmp(m, "SetAlpha") ||
       !strcmp(m, "SetScale")) {
     double v = luaL_checknumber(L, 2);
@@ -2424,6 +2454,7 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
                            "SetFrameStrata",
                            "SetAllPoints",
                            "GetObjectType",
+                           "Stop",
                            "GetParent",
                            "GetID",
                            "SetID",
@@ -2439,6 +2470,8 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
                            "GetRight",
                            "GetTop",
                            "SetWidth",
+                           "SetSize",
+                           "SetDrawLayer",
                            "SetHeight",
                            "GetAlpha",
                            "SetAlpha",
@@ -2565,6 +2598,8 @@ static Object *create(BwUiRuntime *r, const char *type, const char *name, Object
            !strcmp(*m, "SetNormalTexture") || !strcmp(*m, "SetPushedTexture") ||
            !strcmp(*m, "SetDisabledTexture") || !strcmp(*m, "SetHighlightTexture")) &&
           kind != 2 && kind != 3)
+        continue;
+      if (!strcmp(*m, "Stop") && kind != BW_UI_ALPHA_ANIMATION)
         continue;
       int frame_only = strstr(*m, "Keyboard") || strstr(*m, "Mouse") || strstr(*m, "FrameLevel") ||
                        strstr(*m, "FrameStrata") || !strcmp(*m, "GetID") || !strcmp(*m, "SetID") ||
@@ -2946,7 +2981,12 @@ static int instantiate(BwUiRuntime *r, const BwXmlNode *raw, Object *parent, uin
       return 1;
   }
   for (const BwXmlNode *c = n->child; c; c = c->next) {
-    if (tag(c, "Frames") || tag(c, "ScrollChild")) {
+    if (tag(c, "Animations")) {
+      for (const BwXmlNode *g = c->child; g; g = g->next)
+        for (const BwXmlNode *a = g->child; a; a = a->next)
+          if (tag(a, "Alpha") && instantiate(r, a, o, depth + 1))
+            return 1;
+    } else if (tag(c, "Frames") || tag(c, "ScrollChild")) {
       for (const BwXmlNode *f = c->child; f; f = f->next) {
         uint32_t start = r->count;
         if (instantiate(r, f, o, depth + 1))
@@ -3579,7 +3619,7 @@ void bw_ui_runtime_free(BwUiRuntime *r) {
   }
   if (r->error_handler > 0)
     luaL_unref(r->L, LUA_REGISTRYINDEX, r->error_handler);
-  for (int i = 0; i < 15; i++)
+  for (int i = 0; i < 17; i++)
     if (r->metatables[i] > 0)
       luaL_unref(r->L, LUA_REGISTRYINDEX, r->metatables[i]);
   *r->handle = NULL;
@@ -3617,7 +3657,7 @@ const char *bw_ui_runtime_protected_error(const BwUiRuntime *r) {
 uint32_t bw_ui_runtime_texture_asset(BwUiRuntime *r, const char *path, uint32_t width,
                                      uint32_t height) {
   if (!r || !path || !*path || strlen(path) >= 512 || r->texture_asset_count >= 2048 ||
-      ((width == 0) != (height == 0)) || width > 512 || height > 512 || (width & (width - 1)) ||
+      ((width == 0) != (height == 0)) || width > 1024 || height > 1024 || (width & (width - 1)) ||
       (height & (height - 1)))
     return 1;
   if (!width &&

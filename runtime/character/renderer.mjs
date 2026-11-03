@@ -235,7 +235,7 @@ export async function createCharacterPreview({
           if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE)
             throw Error('Portrait surface rejected');
           gl.disable(gl.SCISSOR_TEST);
-          gl.clearColor(0, 0, 0, 0);
+          gl.clearColor(0, 0, 0, 1);
           gl.depthMask(true);
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
           preview.draw({
@@ -310,7 +310,7 @@ export async function createCharacterPreview({
           location('portraitCircle'),
           viewport.left + viewport.width / 2,
           viewport.bottom + viewport.height / 2,
-          portrait ? viewport.width * 0.49 : 0,
+          0,
         );
         gl.uniformMatrix4fv(transform, false, matrix);
         gl.uniformMatrix4fv(location('placement'), false, placement);
@@ -447,8 +447,8 @@ export async function createCharacterPreview({
         gl.depthMask(true);
         gl.disable(gl.SCISSOR_TEST);
         gl.activeTexture(gl.TEXTURE0);
-        if (!portrait)
-          for (const child of attachments)
+        for (const child of attachments)
+          if (!portrait || child.id === 11)
             child.preview.draw({
               elapsed,
               viewport,
@@ -459,7 +459,9 @@ export async function createCharacterPreview({
               diagonalFraming,
               pointLights: lastPointLights,
               placement: model.placeAttachment(child.id, elapsed, placement, facing),
-              viewState,
+              viewState: portrait
+                ? { projection, transform: matrix, particleView, view, eye }
+                : viewState,
             });
         return {
           triangles,
