@@ -475,6 +475,7 @@ export async function createWorldClient({
     await send({ operation: 'ready' });
     await onProgress({ phase: 'ready', progress: 1 });
     loadMilliseconds = Math.round(performance.now() - started);
+    canvas.focus({ preventScroll: true });
     let orbiting = false;
     listen(
       canvas,
@@ -527,6 +528,7 @@ export async function createWorldClient({
       canvas,
       'pointerdown',
       (event) => {
+        if (!modal && !capturesUI(event)) canvas.focus({ preventScroll: true });
         if (event.button === 2 && !cinematic && !modal && !capturesUI(event)) {
           orbiting = true;
           canvas.focus();
@@ -534,7 +536,7 @@ export async function createWorldClient({
           event.stopImmediatePropagation();
         }
         if (voice?.paused && cinematicBegun && !modal) {
-          ((narrationBlocked = false), lastCompleteState, (needsHandoff = false));
+          narrationBlocked = false;
           voice.play().catch(() => {
             narrationBlocked = true;
           });

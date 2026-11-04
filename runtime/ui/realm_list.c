@@ -94,7 +94,8 @@ void bw_realms_finalize(BwRealmList *r, const char *preferred) {
   r->deviation = 0;
   for (uint32_t i = 0; i < r->count; i++) {
     r->mean += r->rows[i].population;
-    if (preferred && !folded_compare(preferred, r->rows[i].name) && !(r->rows[i].flags & 1))
+    if (preferred && !folded_compare(preferred, r->rows[i].name) && !(r->rows[i].flags & 3) &&
+        !r->rows[i].locked)
       r->selected = i + 1;
     int found = 0;
     for (uint32_t c = 0; c < r->category_count; c++)
@@ -128,7 +129,7 @@ void bw_realms_finalize(BwRealmList *r, const char *preferred) {
     for (uint32_t i = 0; i < r->count; i++) {
       uint32_t index = r->order[i];
       const BwRealm *row = &r->rows[index];
-      if (row->flags & 3)
+      if ((row->flags & 3) || row->locked)
         continue;
       if (row->flags & 32) {
         r->selected = index + 1;
@@ -281,8 +282,14 @@ int bw_realms_lua(lua_State *L, BwRealmList *r, uint32_t op) {
   }
   if (op == 11) {
     uint32_t index = row_index(L, r);
-    if (!index || (r->rows[index - 1].flags & 3) || r->rows[index - 1].locked)
-      return luaL_error(L, "selected realm is unavailable");
+    if (!index || (r->rows[index - 1].flags & 3) || r->rows[index - 1].locked) {
+      /* RealmList_OnOk already hid the list. Reopen it and refresh availability
+       * without starting a world connection or rejecting the input callback. */
+      r->selected = r->change = 0;
+      r->suggestion = 2;
+      r->refresh = 1;
+      return 0;
+    }
     r->selected = index;
     r->change = index;
     return 0;

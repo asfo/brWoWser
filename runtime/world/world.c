@@ -377,6 +377,10 @@ static int blocked_at(float x, float y, float z) {
   float feet[3] = {x, y, z};
   return bw_collision_blocked(feet, PLAYER_RADIUS, PLAYER_HEIGHT);
 }
+static int blocked_motion(float x, float y, float z, float nx, float ny, float nz) {
+  float from[3] = {x, y, z}, to[3] = {nx, ny, nz};
+  return bw_collision_motion_blocked(from, to, PLAYER_RADIUS, PLAYER_HEIGHT);
+}
 /* Sweep the capsule, not just a ray through its center. This supports stair
  * edges and ramps while retaining clearance for walls and low ceilings. */
 static float descend(float x, float y, float from, float to, int *contact) {
@@ -387,11 +391,11 @@ static float descend(float x, float y, float from, float to, int *contact) {
     count = 1;
   for (uint32_t i = 1; i <= count; i++) {
     float next = from + (to - from) * i / count;
-    if (blocked_at(x, y, next)) {
+    if (blocked_motion(x, y, z, x, y, next)) {
       float free_z = z, solid_z = next;
       for (uint32_t j = 0; j < 10; j++) {
         float middle = (free_z + solid_z) * .5f;
-        if (blocked_at(x, y, middle))
+        if (blocked_motion(x, y, z, x, y, middle))
           solid_z = middle;
         else
           free_z = middle;
@@ -410,7 +414,7 @@ static int ground_move(float x, float y) {
     float below = ground_height(x, y, player[2] - 200, player[2] + STEP_HEIGHT);
     return isfinite(below) && below < player[2] - .65f ? 2 : 0;
   }
-  if (!blocked_at(x, y, z)) {
+  if (!blocked_motion(player[0], player[1], player[2], x, y, z)) {
     player[0] = x;
     player[1] = y;
     player[2] = z;
@@ -432,14 +436,14 @@ static int ground_move(float x, float y) {
   return 1;
 }
 static void air_move(float dx, float dy) {
-  if (!blocked_at(player[0] + dx, player[1] + dy, player[2])) {
+  if (!blocked_motion(player[0], player[1], player[2], player[0] + dx, player[1] + dy, player[2])) {
     player[0] += dx;
     player[1] += dy;
     return;
   }
-  if (!blocked_at(player[0] + dx, player[1], player[2]))
+  if (!blocked_motion(player[0], player[1], player[2], player[0] + dx, player[1], player[2]))
     player[0] += dx;
-  if (!blocked_at(player[0], player[1] + dy, player[2]))
+  if (!blocked_motion(player[0], player[1], player[2], player[0], player[1] + dy, player[2]))
     player[1] += dy;
 }
 static void start_air(float vx, float vy, int jump, uint32_t flags) {
@@ -523,11 +527,11 @@ uint32_t world_step(float dt) {
       vertical_speed = fmaxf(-60.148f, vertical_speed - GRAVITY * slice);
       air_time += slice;
       if (next > player[2]) {
-        if (blocked_at(player[0], player[1], next)) {
+        if (blocked_motion(player[0], player[1], player[2], player[0], player[1], next)) {
           float free_z = player[2], solid_z = next;
           for (uint32_t k = 0; k < 10; k++) {
             float mid = (free_z + solid_z) * .5f;
-            if (blocked_at(player[0], player[1], mid))
+            if (blocked_motion(player[0], player[1], player[2], player[0], player[1], mid))
               solid_z = mid;
             else
               free_z = mid;

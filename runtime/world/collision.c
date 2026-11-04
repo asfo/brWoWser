@@ -351,6 +351,53 @@ int bw_collision_blocked(const float *feet, float radius, float height) {
   }
   return 0;
 }
+/* Existing contact must not pin the capsule in mid-air. Compare penetration
+ * before/after motion: new/deeper contacts block, tangential or escaping motion
+ * remains possible. Floor support is still resolved separately by world.c. */
+static float capsule_triangle_distance2(const float *a, const float *b, const Triangle *t) {
+  float hit;
+  if (segment_triangle(a, b, t, &hit))
+    return 0;
+  float d = fminf(point_triangle(a, t->p), point_triangle(b, t->p));
+  for (int edge = 0; edge < 3; edge++)
+    d = fminf(d, segment_segment(a, b, t->p + edge * 3, t->p + ((edge + 1) % 3) * 3));
+  return d;
+}
+int bw_collision_motion_blocked(const float *from, const float *to, float radius, float height) {
+  float a[3] = {to[0], to[1], to[2] + radius}, b[3] = {to[0], to[1], to[2] + height - radius};
+  float old_a[3] = {from[0], from[1], from[2] + radius},
+        old_b[3] = {from[0], from[1], from[2] + height - radius};
+  float box[6] = {to[0] - radius, to[1] - radius, to[2],
+                  to[0] + radius, to[1] + radius, to[2] + height};
+  for (uint32_t i = 0; i < instance_count; i++) {
+    Instance *in = &instances[i];
+    if (!overlap(box, in->bounds))
+      continue;
+    float p[3], q[3], old_p[3], old_q[3], bounds[6];
+    local_point(in, a, p);
+    local_point(in, b, q);
+    local_point(in, old_a, old_p);
+    local_point(in, old_b, old_q);
+    float r = (radius - .002f) / in->scale;
+    for (int k = 0; k < 3; k++) {
+      bounds[k] = fminf(p[k], q[k]) - r;
+      bounds[k + 3] = fmaxf(p[k], q[k]) + r;
+    }
+    Mesh *mesh = &meshes[in->mesh];
+    for (uint32_t j = 0; j < mesh->count; j++) {
+      Triangle *t = &mesh->triangles[j];
+      if (!overlap(bounds, t->bounds))
+        continue;
+      float after = capsule_triangle_distance2(p, q, t);
+      if (after >= r * r)
+        continue;
+      float before = capsule_triangle_distance2(old_p, old_q, t);
+      if (before >= r * r || after + 1e-6f / (in->scale * in->scale) < before)
+        return 1;
+    }
+  }
+  return 0;
+}
 float bw_collision_floor(float x, float y, float low, float high) {
   float best = NAN, a[3] = {x, y, high}, b[3] = {x, y, low};
   float box[6] = {x, y, low, x, y, high};

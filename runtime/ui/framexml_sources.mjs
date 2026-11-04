@@ -109,7 +109,7 @@ export async function collectFrameXML(readAsset) {
       for (const match of source.matchAll(
         /\b(?:file|bgFile|edgeFile)="(Interface[\\/][^"\r\n]+)"/gi,
       ))
-        if (!/\.(?:xml|lua)$/i.test(match[1])) textures.add(match[1]);
+        if (!/\.(?:xml|lua|m2|mdx|mdl|ttf)$/i.test(match[1])) textures.add(match[1]);
       for (const match of source.matchAll(/LoadMicroButtonTextures\(self,\s*"([A-Za-z]+)"/g))
         for (const suffix of ['Up', 'Down', 'Disabled'])
           textures.add('Interface\\Buttons\\UI-MicroButton-' + match[1] + '-' + suffix);

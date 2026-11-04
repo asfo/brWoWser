@@ -93,7 +93,8 @@ brWoWser targets the WotLK 3.3.5a build 12340 login, character-management and in
 - Lighting and camera framing were recently restored after regressions. Final appearance still needs manual comparison.
 - Weapon placement/grip and tall-race framing need further manual review.
 - Night Elf eye glow is admitted by the renderer but its reported absence remains unresolved.
-- Reconnecting, retrying failed actions, character creation results, and session lifetime need further review.
+- Unavailable/locked realm selection returns to the realm list and refreshes availability instead of raising a Lua input error; automatic selection excludes those realms. Reconnecting, character creation results and session lifetime still need manual review.
+- World UI image discovery excludes native model/font/source files. Hidden backpack `.mdx` animation references no longer abort HUD loading. World entry and trusted canvas pointer input explicitly restore keyboard focus. Capsule motion compares existing penetration before/after a step so lateral contact does not independently stop descent or prevent escape; new/deeper contacts still block and landing still requires walkable support. Recheck the reported Northshire position (-8935.058, -106.862, 84.454), wall sliding and jumping manually.
 
 ## Compatibility limits
 
