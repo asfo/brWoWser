@@ -73,6 +73,8 @@ Research, captures, previous experiments, and historical tests remain local and 
 
 ## Development
 
+Full native builds can take several minutes, especially for the world and FrameXML modules. The build reports elapsed progress every 15 seconds and concurrent invocations wait for the active build. Ctrl+C cancels compilation cleanly. Unchanged restarts reuse verified WASM outputs; native source/toolchain changes still require a full rebuild.
+
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt

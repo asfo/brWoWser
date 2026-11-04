@@ -45,7 +45,7 @@ async function bridgeReady() {
 try {
   const build = start('tools/build.mjs');
   const [code] = await once(build, 'exit');
-  if (code !== 0) throw Error('WASM build failed');
+  if (!stopping && code !== 0) throw Error('WASM build failed');
   if (!stopping) {
     if (!(await bridgeReady())) {
       const bridge = start('scripts/network_bridge.mjs');
